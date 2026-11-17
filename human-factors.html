@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b2026">
+  <meta name="description" content="人为因素与航空法规课程刷题网页">
+  <title>AeroPrep · 人为因素与航空法规题库</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="human-factors.css">
+</head>
+<body class="hf-body">
+  <svg class="svg-defs" aria-hidden="true">
+    <symbol id="icon-plane" viewBox="0 0 24 24">
+      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16Z"/>
+    </symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24">
+      <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z"/>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="m10 8 6 4-6 4V8Z"/>
+    </symbol>
+    <symbol id="icon-grid" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="7" height="7" rx="2"/>
+      <rect x="14" y="3" width="7" height="7" rx="2"/>
+      <rect x="3" y="14" width="7" height="7" rx="2"/>
+      <rect x="14" y="14" width="7" height="7" rx="2"/>
+    </symbol>
+    <symbol id="icon-edit" viewBox="0 0 24 24">
+      <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/>
+      <path d="m13.5 6.5 4 4"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24">
+      <path d="M10.3 4.2 2.8 17.1a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/>
+      <path d="M12 9v4"/><path d="M12 17h.01"/>
+    </symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24">
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/>
+      <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24"><path d="m6 6 12 12"/><path d="M18 6 6 18"/></symbol>
+    <symbol id="icon-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="icon-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="icon-flame" viewBox="0 0 24 24"><path d="M12 3s5 4.4 5 9a5 5 0 0 1-10 0c0-2 1-3.4 2-4.5 0 2 1 3 2 3 1 0 1.5-.9 1.5-2 0-2.2-.5-3.8-2.5-5.5Z"/></symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></symbol>
+    <symbol id="icon-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="icon-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+    <symbol id="icon-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+    <symbol id="icon-spark" viewBox="0 0 24 24"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="hf-sidebar">
+      <a class="brand" href="#/home" aria-label="返回课程首页">
+        <span class="brand-mark"><svg><use href="#icon-book"></use></svg></span>
+        <span class="brand-copy">
+          <strong>AeroPrep</strong>
+          <small>HF & REGULATION LAB</small>
+        </span>
+      </a>
+
+      <div class="course-switcher">
+        <p class="nav-label">课程空间</p>
+        <a class="course-pill" href="index.html">
+          <span class="course-pill-icon"><svg><use href="#icon-plane"></use></svg></span>
+          <span class="course-pill-copy"><strong>飞机健康监测</strong><small>与故障诊断</small></span>
+          <span class="course-pill-mark"></span>
+        </a>
+        <a class="course-pill is-active" href="human-factors.html">
+          <span class="course-pill-icon"><svg><use href="#icon-book"></use></svg></span>
+          <span class="course-pill-copy"><strong>人为因素</strong><small>与航空法规</small></span>
+          <span class="course-pill-mark"></span>
+        </a>
+      </div>
+
+      <nav class="side-nav" aria-label="人为因素课程导航">
+        <p class="nav-label">人为因素与航空法规</p>
+        <a class="nav-item" href="#/home" data-hf-nav="home"><svg><use href="#icon-home"></use></svg><span>今日概览</span></a>
+        <a class="nav-item" href="#/practice" data-hf-nav="practice"><svg><use href="#icon-play"></use></svg><span>开始刷题</span><span class="nav-dot"></span></a>
+        <a class="nav-item" href="#/bank" data-hf-nav="bank"><svg><use href="#icon-grid"></use></svg><span>全部题库</span></a>
+        <a class="nav-item" href="#/short" data-hf-nav="short"><svg><use href="#icon-edit"></use></svg><span>简答练习</span><span class="nav-count" id="hf-nav-short-count">0/12</span></a>
+        <p class="nav-label nav-label-spaced">我的学习</p>
+        <a class="nav-item" href="#/wrong" data-hf-nav="wrong"><svg><use href="#icon-alert"></use></svg><span>错题本</span><span class="nav-count" id="hf-nav-wrong-count">0</span></a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-progress-card">
+          <div class="sidebar-progress-head">
+            <span class="mini-label">HF COURSE PROGRESS</span>
+            <strong id="hf-sidebar-percent">0%</strong>
+          </div>
+          <div class="progress-track progress-track-dark"><span id="hf-sidebar-progress-fill" style="width:0%"></span></div>
+          <p><span id="hf-sidebar-solved">0</span> / <span id="hf-sidebar-total">70</span> 道题已完成</p>
+        </div>
+        <div class="profile-row">
+          <span class="profile-avatar">人</span>
+          <span class="profile-copy"><strong>独立课程空间</strong><small>进度不与健康监测混算</small></span>
+          <span class="status-dot" title="本地进度已保存"></span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-button menu-button" id="hf-menu-button" type="button" aria-label="打开导航"><svg><use href="#icon-menu"></use></svg></button>
+          <div class="breadcrumb">
+            <span>人为因素与航空法规</span>
+            <span class="breadcrumb-sep">/</span>
+            <strong id="hf-page-label">今日概览</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="search-trigger" id="hf-search-trigger" type="button">
+            <svg><use href="#icon-search"></use></svg><span>搜索题目</span><kbd>/</kbd>
+          </button>
+          <div class="streak-pill" title="本课程累计作答">
+            <svg><use href="#icon-flame"></use></svg>
+            <span><strong id="hf-total-answered">0</strong> 次</span>
+          </div>
+          <span class="top-avatar">人</span>
+        </div>
+      </header>
+      <main id="hf-app" class="app-main" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <nav class="mobile-nav" aria-label="移动端导航">
+    <a href="#/home" data-hf-nav="home"><svg><use href="#icon-home"></use></svg><span>概览</span></a>
+    <a href="#/practice" data-hf-nav="practice"><svg><use href="#icon-play"></use></svg><span>刷题</span></a>
+    <a href="#/bank" data-hf-nav="bank"><svg><use href="#icon-grid"></use></svg><span>题库</span></a>
+    <a href="#/short" data-hf-nav="short"><svg><use href="#icon-edit"></use></svg><span>简答</span></a>
+    <a href="#/wrong" data-hf-nav="wrong"><svg><use href="#icon-alert"></use></svg><span>错题</span></a>
+  </nav>
+
+  <div class="sidebar-scrim" id="hf-sidebar-scrim"></div>
+  <div class="toast" id="hf-toast" role="status" aria-live="polite"></div>
+  <script src="human-factors-questions.js"></script>
+  <script src="human-factors.js"></script>
+</body>
+</html>

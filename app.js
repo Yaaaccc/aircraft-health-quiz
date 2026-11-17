@@ -1,6 +1,8 @@
 const QUESTIONS = window.QUESTIONS || [];
+const SHORT_ANSWERS = window.SHORT_ANSWERS || [];
 const META = window.QUIZ_META || { title: "飞机健康监测与故障诊断", subtitle: "课程复习题库" };
 const QUESTION_BY_ID = new Map(QUESTIONS.map((question) => [question.id, question]));
+const SHORT_BY_ID = new Map(SHORT_ANSWERS.map((question) => [question.id, question]));
 const STORAGE_KEY = "aeroprep-state-v1";
 
 const CATEGORY_META = {
@@ -18,15 +20,18 @@ const PAGE_LABEL = {
   home: "今日概览",
   practice: "刷题练习",
   bank: "全部题库",
+  short: "简答练习",
   wrong: "错题本",
   favorites: "我的收藏",
-  result: "练习结果"
+  result: "练习结果",
+  "human-factors": "人为因素与航空法规"
 };
 
 const app = document.getElementById("app");
 const toastEl = document.getElementById("toast");
 const bankState = { query: "", type: "all", category: "all" };
 let session = null;
+let shortSession = null;
 let toastTimer = null;
 
 function icon(name, className = "") {
@@ -59,6 +64,8 @@ function dateDifference(from, to) {
 function defaultState() {
   return {
     progress: {},
+    shortProgress: {},
+    shortDrafts: {},
     wrong: [],
     favorites: [],
     stats: {
@@ -81,6 +88,16 @@ function loadState() {
       ...base,
       ...saved,
       progress: saved.progress && typeof saved.progress === "object" ? saved.progress : {},
+      shortProgress: saved.shortProgress && typeof saved.shortProgress === "object"
+        ? Object.fromEntries(
+          Object.entries(saved.shortProgress).filter(([id]) => SHORT_BY_ID.has(id))
+        )
+        : {},
+      shortDrafts: saved.shortDrafts && typeof saved.shortDrafts === "object"
+        ? Object.fromEntries(
+          Object.entries(saved.shortDrafts).filter(([id]) => SHORT_BY_ID.has(id))
+        )
+        : {},
       wrong: Array.isArray(saved.wrong) ? saved.wrong.filter((id) => QUESTION_BY_ID.has(id)) : [],
       favorites: Array.isArray(saved.favorites)
         ? saved.favorites.filter((id) => QUESTION_BY_ID.has(id))
@@ -207,6 +224,9 @@ function updateChrome() {
   document.getElementById("sidebar-progress-fill").style.width = `${percent}%`;
   document.getElementById("nav-wrong-count").textContent = state.wrong.length;
   document.getElementById("nav-favorite-count").textContent = state.favorites.length;
+  const mastered = Object.values(state.shortProgress).filter((item) => item.status === "mastered").length;
+  const shortCount = document.getElementById("nav-short-count");
+  if (shortCount) shortCount.textContent = `${mastered}/${SHORT_ANSWERS.length}`;
   document.getElementById("streak-days").textContent = currentStreak();
 }
 
@@ -217,6 +237,11 @@ function setPageLabel(route) {
 function updateNavigation(route) {
   document.querySelectorAll("[data-nav]").forEach((link) => {
     link.classList.toggle("is-active", link.dataset.nav === route);
+  });
+  const isHumanFactors = route === "human-factors";
+  document.querySelectorAll("[data-course]").forEach((link) => {
+    const expected = isHumanFactors ? "human-factors" : "health";
+    link.classList.toggle("is-active", link.dataset.course === expected);
   });
 }
 
@@ -258,6 +283,18 @@ function handleRoute() {
     };
   }
 
+  if (route === "short" && !shortSession) {
+    const firstUnmastered = SHORT_ANSWERS.findIndex(
+      (question) => state.shortProgress[question.id]?.status !== "mastered"
+    );
+    shortSession = {
+      ids: SHORT_ANSWERS.map((question) => question.id),
+      index: firstUnmastered >= 0 ? firstUnmastered : 0,
+      revealed: new Set(),
+      startedAt: Date.now()
+    };
+  }
+
   setPageLabel(route);
   updateNavigation(route);
   updateChrome();
@@ -265,9 +302,11 @@ function handleRoute() {
   if (route === "home") renderHome();
   else if (route === "practice") renderPractice();
   else if (route === "bank") renderBankPage();
+  else if (route === "short") renderShortPractice();
   else if (route === "wrong") renderCollection("wrong");
   else if (route === "favorites") renderCollection("favorites");
   else if (route === "result") renderResult();
+  else if (route === "human-factors") renderHumanFactorsPage();
   else renderHome();
 
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -356,6 +395,7 @@ function renderHome() {
           <div class="hero-meta">
             <span class="hero-meta-item">${icon("layers")}<strong>${total}</strong> 道题</span>
             <span class="hero-meta-item">${icon("grid")}<strong>${CATEGORY_ORDER.length}</strong> 个模块</span>
+            <span class="hero-meta-item">${icon("edit")}<strong>${SHORT_ANSWERS.length}</strong> 道简答</span>
             <span class="hero-meta-item">${icon("check")}即时判题与解析</span>
           </div>
         </div>
@@ -428,6 +468,12 @@ function renderHome() {
             <strong>收藏专项</strong>
             <p>${state.favorites.length ? `${state.favorites.length} 道已收藏` : "暂无收藏 · 标记重点题"}</p>
           </button>
+          <button class="mode-card mode-card-short" type="button" data-action="start-short">
+            <span class="mode-arrow">${icon("arrow")}</span>
+            <span class="mode-icon">${icon("edit")}</span>
+            <strong>简答练习</strong>
+            <p>${SHORT_ANSWERS.length} 道主观题 · 先作答再展开答案</p>
+          </button>
         </div>
       </section>
 
@@ -464,7 +510,7 @@ function renderHome() {
 
           <article class="tip-card">
             ${icon("spark")}
-            <p><strong>小提示</strong>单选题点击选项后立即判题；多选题选好后点击「提交答案」，解析会出现在下方。</p>
+            <p><strong>小提示</strong>单选题点击选项后立即判题；简答题先写关键词，再展开参考答案并做自评。也可以<a class="text-link" href="output/pdf/飞机健康监测与故障诊断_题库.pdf" target="_blank" rel="noopener">打开 PDF 题库 ${icon("arrow")}</a>。</p>
           </article>
         </aside>
       </div>
@@ -733,6 +779,344 @@ function renderPractice() {
       </div>
     </div>
   `;
+}
+
+function shortStatusMeta(status) {
+  if (status === "mastered") return { label: "已掌握", className: "is-mastered", icon: "check" };
+  if (status === "fuzzy") return { label: "还模糊", className: "is-fuzzy", icon: "clock" };
+  if (status === "unknown") return { label: "不会", className: "is-unknown", icon: "alert" };
+  return { label: "未自评", className: "", icon: "edit" };
+}
+
+function shortAnswerMarkup(question) {
+  const sections = question.answer.map((section) => {
+    const list = section.list
+      ? `<ul class="short-answer-list">${section.list.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>`
+      : "";
+    const body = section.body ? `<p>${escapeHTML(section.body)}</p>` : "";
+    return `
+      <section class="short-answer-section">
+        <h3>${escapeHTML(section.heading)}</h3>
+        ${body}
+        ${list}
+      </section>
+    `;
+  }).join("");
+
+  const figure = question.figure
+    ? `
+      <figure class="short-answer-figure">
+        <img src="${escapeHTML(question.figure)}" alt="故障树题目电路图">
+        <figcaption>题目电路图：正常时 A 不亮</figcaption>
+      </figure>
+    `
+    : "";
+
+  const formula = question.formula
+    ? `<div class="short-formula">${escapeHTML(question.formula)}</div>`
+    : "";
+
+  const keyPoints = question.keyPoints?.length
+    ? `
+      <div class="short-keypoints">
+        <span class="short-answer-label">评分关键词</span>
+        <div>${question.keyPoints.map((item) => `<span>${escapeHTML(item)}</span>`).join("")}</div>
+      </div>
+    `
+    : "";
+
+  const caution = question.caution
+    ? `<p class="short-answer-caution">${escapeHTML(question.caution)}</p>`
+    : "";
+
+  return `
+    <section class="short-answer-panel" tabindex="-1" aria-live="polite">
+      <div class="short-answer-panel-head">
+        <span class="short-answer-kicker">参考答案</span>
+        <span class="short-source-badge">${escapeHTML(question.sourceType)}</span>
+      </div>
+      ${figure}
+      <div class="short-answer-content">${sections}</div>
+      ${formula}
+      ${keyPoints}
+      ${caution}
+      <div class="short-answer-foot">
+        <span>来源：${escapeHTML(question.source)}</span>
+        <span>${question.tags.map((tag) => `<b>${escapeHTML(tag)}</b>`).join("")}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderShortPractice() {
+  if (!SHORT_ANSWERS.length) {
+    navigate("home");
+    return;
+  }
+  if (!shortSession) {
+    shortSession = {
+      ids: SHORT_ANSWERS.map((question) => question.id),
+      index: 0,
+      revealed: new Set(),
+      startedAt: Date.now()
+    };
+  }
+
+  const currentQuestion = SHORT_BY_ID.get(shortSession.ids[shortSession.index]);
+  if (!currentQuestion) {
+    navigate("home");
+    return;
+  }
+
+  const categoryMeta = getCategoryMeta(currentQuestion.category);
+  const saved = state.shortProgress[currentQuestion.id];
+  const status = saved?.status || "";
+  const statusMeta = shortStatusMeta(status);
+  const revealed = shortSession.revealed.has(currentQuestion.id) || Boolean(saved);
+  const draft = state.shortDrafts[currentQuestion.id] || "";
+  const isLast = shortSession.index === shortSession.ids.length - 1;
+  const progress = Math.round(((shortSession.index + 1) / shortSession.ids.length) * 100);
+  const assessed = Object.values(state.shortProgress);
+  const mastered = assessed.filter((item) => item.status === "mastered").length;
+  const fuzzy = assessed.filter((item) => item.status === "fuzzy").length;
+  const unknown = assessed.filter((item) => item.status === "unknown").length;
+
+  const mapMarkup = shortSession.ids.map((id, index) => {
+    const item = SHORT_BY_ID.get(id);
+    const itemStatus = state.shortProgress[id]?.status || "";
+    const classes = [
+      "map-button",
+      itemStatus === "mastered" ? "is-correct" : "",
+      itemStatus === "fuzzy" ? "is-fuzzy" : "",
+      itemStatus === "unknown" ? "is-wrong" : "",
+      index === shortSession.index ? "is-current" : ""
+    ].filter(Boolean).join(" ");
+    return `
+      <button
+        class="${classes}"
+        type="button"
+        data-action="jump-short"
+        data-index="${index}"
+        aria-label="第 ${index + 1} 题：${escapeHTML(item?.question || "")}"
+      >${index + 1}</button>
+    `;
+  }).join("");
+
+  const assessmentMarkup = revealed
+    ? `
+      <div class="short-assess">
+        <div>
+          <span class="short-answer-label">这一步掌握了吗？</span>
+          <p>自评只影响你的简答进度，不影响选择题统计。</p>
+        </div>
+        <div class="short-assess-actions">
+          <button class="short-assess-button is-mastered${status === "mastered" ? " is-selected" : ""}" type="button" data-action="assess-short" data-status="mastered">
+            ${icon("check")} 掌握
+          </button>
+          <button class="short-assess-button is-fuzzy${status === "fuzzy" ? " is-selected" : ""}" type="button" data-action="assess-short" data-status="fuzzy">
+            ${icon("clock")} 模糊
+          </button>
+          <button class="short-assess-button is-unknown${status === "unknown" ? " is-selected" : ""}" type="button" data-action="assess-short" data-status="unknown">
+            ${icon("alert")} 不会
+          </button>
+        </div>
+      </div>
+    `
+    : "";
+
+  app.innerHTML = `
+    <div class="practice-view view-enter short-view">
+      <div class="practice-head">
+        <div class="practice-title-row">
+          <button class="back-button" type="button" data-action="exit-short" aria-label="返回概览">
+            ${icon("left")}
+          </button>
+          <div>
+            <h1>简答练习</h1>
+            <p>共 ${SHORT_ANSWERS.length} 题 · 先作答再展开参考答案 · 自评会保存在本机</p>
+          </div>
+        </div>
+        <span class="mode-badge">主观题</span>
+      </div>
+
+      <div class="practice-layout">
+        <section class="quiz-card short-card">
+          <div class="quiz-topline">
+            <div class="quiz-meta">
+              <span class="type-tag short-type-tag">简答题</span>
+              <span
+                class="category-tag"
+                style="--cat-color:${categoryMeta.color};--cat-soft:${categoryMeta.soft}"
+              >${escapeHTML(currentQuestion.category)}</span>
+              <span class="difficulty-tag">${escapeHTML(currentQuestion.difficulty)}</span>
+            </div>
+            <span class="quiz-index"><strong>${String(shortSession.index + 1).padStart(2, "0")}</strong> / ${String(shortSession.ids.length).padStart(2, "0")}</span>
+          </div>
+          <div class="quiz-progress"><span style="width:${progress}%"></span></div>
+
+          <div class="question-heading short-question-heading">
+            <span class="question-number">${shortSession.index + 1}</span>
+            <h2>${escapeHTML(currentQuestion.question)}</h2>
+            <span class="short-status-pill ${statusMeta.className}">${icon(statusMeta.icon)}${statusMeta.label}</span>
+          </div>
+          <p class="option-hint">先在草稿里写出关键词和结构，再展开答案核对。答案展开后可以自评。</p>
+
+          <label class="short-draft">
+            <span>我的作答草稿 <small>不会自动判分，可留空</small></span>
+            <textarea
+              data-short-draft="${currentQuestion.id}"
+              rows="6"
+              placeholder="例如：先写系统组成、关键活门、保护逻辑……"
+            >${escapeHTML(draft)}</textarea>
+          </label>
+
+          ${revealed
+            ? shortAnswerMarkup(currentQuestion)
+            : `
+              <div class="short-reveal-prompt">
+                ${icon("edit")}
+                <div>
+                  <strong>参考答案先藏在这里</strong>
+                  <p>写完后展开，对照评分关键词检查自己漏了哪一层。</p>
+                </div>
+                <button class="button button-dark button-small" type="button" data-action="reveal-short">
+                  展开参考答案 ${icon("right")}
+                </button>
+              </div>
+            `}
+
+          ${assessmentMarkup}
+
+          <div class="quiz-footer">
+            <div class="quiz-footer-left">
+              <span class="keyboard-hint">当前为第 ${shortSession.index + 1} / ${shortSession.ids.length} 题</span>
+            </div>
+            <div class="quiz-footer-right">
+              <button
+                class="button button-outline button-small"
+                type="button"
+                data-action="previous-short"
+                ${shortSession.index === 0 ? "disabled" : ""}
+              >${icon("left")} 上一题</button>
+              <button class="button button-dark button-small" type="button" data-action="${isLast ? "finish-short" : "next-short"}">
+                ${isLast ? "完成练习" : "下一题"} ${icon("right")}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="practice-aside">
+          <section class="session-card">
+            <div class="session-card-head">
+              <h3>简答进度</h3>
+              <span>${mastered + fuzzy + unknown} / ${SHORT_ANSWERS.length} 已自评</span>
+            </div>
+            <div class="session-stats">
+              <div class="session-stat"><strong>${mastered}</strong><span>掌握</span></div>
+              <div class="session-stat"><strong>${fuzzy}</strong><span>模糊</span></div>
+              <div class="session-stat"><strong>${unknown}</strong><span>不会</span></div>
+            </div>
+            <div class="map-label">
+              <strong>简答导航</strong>
+              <span>点击跳转</span>
+            </div>
+            <div class="question-map">${mapMarkup}</div>
+            <div class="map-legend">
+              <span class="legend-item"><span class="legend-dot"></span>未自评</span>
+              <span class="legend-item"><span class="legend-dot correct"></span>掌握</span>
+              <span class="legend-item"><span class="legend-dot wrong"></span>不会</span>
+              <span class="legend-item"><span class="legend-dot fuzzy"></span>模糊</span>
+            </div>
+          </section>
+
+          <button class="session-exit" type="button" data-action="exit-short">
+            ${icon("left")} 返回概览
+          </button>
+
+          <section class="legend-card">
+            <p><strong>简答题怎么练</strong><br>先写草稿，再展开答案。能说出“定义、结构、原因、场景”四层，通常就已经抓住得分点。</p>
+          </section>
+        </aside>
+      </div>
+    </div>
+  `;
+}
+
+function saveShortDraft(questionId, value) {
+  if (!SHORT_BY_ID.has(questionId)) return;
+  state.shortDrafts[questionId] = value;
+  saveState();
+}
+
+function revealShortAnswer() {
+  if (!shortSession) return;
+  const question = SHORT_BY_ID.get(shortSession.ids[shortSession.index]);
+  if (!question) return;
+  shortSession.revealed.add(question.id);
+  renderShortPractice();
+  requestAnimationFrame(() => {
+    app.querySelector(".short-answer-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+}
+
+function assessShortAnswer(status) {
+  if (!shortSession) return;
+  const question = SHORT_BY_ID.get(shortSession.ids[shortSession.index]);
+  if (!question) return;
+  state.shortProgress[question.id] = {
+    status,
+    updatedAt: new Date().toISOString()
+  };
+  shortSession.revealed.add(question.id);
+  saveState();
+  updateChrome();
+  renderShortPractice();
+  showToast(status === "mastered" ? "已标记为掌握" : status === "fuzzy" ? "已标记为模糊" : "已标记为不会");
+}
+
+function moveShortQuestion(direction) {
+  if (!shortSession) return;
+  if (direction > 0 && shortSession.index === shortSession.ids.length - 1) {
+    navigate("home");
+    showToast("简答练习已完成");
+    return;
+  }
+  shortSession.index = Math.max(
+    0,
+    Math.min(shortSession.ids.length - 1, shortSession.index + direction)
+  );
+  renderShortPractice();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function jumpToShort(index) {
+  if (!shortSession) return;
+  const nextIndex = Number(index);
+  if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= shortSession.ids.length) return;
+  shortSession.index = nextIndex;
+  renderShortPractice();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function startShortPractice() {
+  if (!SHORT_ANSWERS.length) {
+    showToast("简答题库还没有内容");
+    return;
+  }
+  const firstUnmastered = SHORT_ANSWERS.findIndex(
+    (question) => state.shortProgress[question.id]?.status !== "mastered"
+  );
+  shortSession = {
+    ids: SHORT_ANSWERS.map((question) => question.id),
+    index: firstUnmastered >= 0 ? firstUnmastered : 0,
+    revealed: new Set(),
+    startedAt: Date.now()
+  };
+  navigate("short");
+}
+
+function renderHumanFactorsPage() {
+  window.location.replace("human-factors.html");
 }
 
 function chooseOption(key) {
@@ -1150,6 +1534,23 @@ app.addEventListener("click", (event) => {
       `${category} · 专项练习`,
       "分类练习"
     );
+  } else if (action === "start-short") {
+    startShortPractice();
+  } else if (action === "reveal-short") {
+    revealShortAnswer();
+  } else if (action === "assess-short") {
+    assessShortAnswer(actionTarget.dataset.status);
+  } else if (action === "previous-short") {
+    moveShortQuestion(-1);
+  } else if (action === "next-short") {
+    moveShortQuestion(1);
+  } else if (action === "jump-short") {
+    jumpToShort(actionTarget.dataset.index);
+  } else if (action === "exit-short") {
+    navigate("home");
+  } else if (action === "finish-short") {
+    navigate("home");
+    showToast("简答练习已完成");
   } else if (action === "choose-option") {
     chooseOption(actionTarget.dataset.key);
   } else if (action === "submit-multi") {
@@ -1192,6 +1593,12 @@ app.addEventListener("click", (event) => {
   } else if (action === "go-home") {
     navigate("home");
   }
+});
+
+app.addEventListener("input", (event) => {
+  const draft = event.target.closest("[data-short-draft]");
+  if (!draft) return;
+  saveShortDraft(draft.dataset.shortDraft, draft.value);
 });
 
 app.addEventListener("keydown", (event) => {
