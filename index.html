@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b2026">
+  <meta name="description" content="飞机健康监测与故障诊断课程刷题网页">
+  <title>AeroPrep · 飞机健康监测题库</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true">
+    <symbol id="icon-plane" viewBox="0 0 24 24">
+      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16Z"/>
+    </symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24">
+      <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z"/>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="m10 8 6 4-6 4V8Z"/>
+    </symbol>
+    <symbol id="icon-grid" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="7" height="7" rx="2"/>
+      <rect x="14" y="3" width="7" height="7" rx="2"/>
+      <rect x="3" y="14" width="7" height="7" rx="2"/>
+      <rect x="14" y="14" width="7" height="7" rx="2"/>
+    </symbol>
+    <symbol id="icon-bookmark" viewBox="0 0 24 24">
+      <path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4V4Z"/>
+    </symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24">
+      <path d="M10.3 4.2 2.8 17.1a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/>
+      <path d="M12 9v4"/>
+      <path d="M12 17h.01"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7"/>
+      <path d="m20 20-4-4"/>
+    </symbol>
+    <symbol id="icon-flame" viewBox="0 0 24 24">
+      <path d="M12 3s5 4.4 5 9a5 5 0 0 1-10 0c0-2 1-3.4 2-4.5 0 2 1 3 2 3 1 0 1.5-.9 1.5-2 0-2.2-.5-3.8-2.5-5.5Z"/>
+    </symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24">
+      <path d="M5 12h14"/>
+      <path d="m13 6 6 6-6 6"/>
+    </symbol>
+    <symbol id="icon-left" viewBox="0 0 24 24">
+      <path d="m15 18-6-6 6-6"/>
+    </symbol>
+    <symbol id="icon-right" viewBox="0 0 24 24">
+      <path d="m9 18 6-6-6-6"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24">
+      <path d="m5 12 4 4L19 6"/>
+    </symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24">
+      <path d="m6 6 12 12"/>
+      <path d="M18 6 6 18"/>
+    </symbol>
+    <symbol id="icon-rotate" viewBox="0 0 24 24">
+      <path d="M20 7v5h-5"/>
+      <path d="M19 12a7 7 0 1 0-2 5"/>
+    </symbol>
+    <symbol id="icon-target" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="icon-layers" viewBox="0 0 24 24">
+      <path d="m12 3 9 5-9 5-9-5 9-5Z"/>
+      <path d="m3 12 9 5 9-5"/>
+      <path d="m3 16 9 5 9-5"/>
+    </symbol>
+    <symbol id="icon-database" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="5" rx="8" ry="3"/>
+      <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/>
+      <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>
+    </symbol>
+    <symbol id="icon-wrench" viewBox="0 0 24 24">
+      <path d="M14.7 6.3a4 4 0 0 0-5-5L7.5 3.5l3 3 2.2-2.2a4 4 0 0 0 2 2Z"/>
+      <path d="m10.5 6.5-7 7a2.1 2.1 0 0 0 3 3l7-7"/>
+    </symbol>
+    <symbol id="icon-gauge" viewBox="0 0 24 24">
+      <path d="M4.4 17a9 9 0 1 1 15.2 0"/>
+      <path d="m12 13 4-4"/>
+      <path d="M12 13h.01"/>
+    </symbol>
+    <symbol id="icon-star" viewBox="0 0 24 24">
+      <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 7v5l3 2"/>
+    </symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24">
+      <path d="M4 20V10"/>
+      <path d="M10 20V4"/>
+      <path d="M16 20v-7"/>
+      <path d="M22 20H2"/>
+    </symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24">
+      <path d="M4 7h16"/>
+      <path d="M4 12h16"/>
+      <path d="M4 17h16"/>
+    </symbol>
+    <symbol id="icon-spark" viewBox="0 0 24 24">
+      <path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/>
+      <path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/>
+    </symbol>
+    <symbol id="icon-wind" viewBox="0 0 24 24">
+      <path d="M3 8h10a2 2 0 1 0-2-2"/>
+      <path d="M3 12h14a2 2 0 1 1-2 2"/>
+      <path d="M3 16h7"/>
+    </symbol>
+    <symbol id="icon-snow" viewBox="0 0 24 24">
+      <path d="M12 2v20"/>
+      <path d="m3.5 7 17 10"/>
+      <path d="m20.5 7-17 10"/>
+      <path d="m9 4 3 3 3-3"/>
+      <path d="m9 20 3-3 3 3"/>
+    </symbol>
+    <symbol id="icon-pulse" viewBox="0 0 24 24">
+      <path d="M3 12h4l2-6 4 12 2-6h6"/>
+    </symbol>
+    <symbol id="icon-signal" viewBox="0 0 24 24">
+      <path d="M4 20v-3"/>
+      <path d="M9 20v-7"/>
+      <path d="M14 20V9"/>
+      <path d="M19 20V4"/>
+    </symbol>
+    <symbol id="icon-tree" viewBox="0 0 24 24">
+      <rect x="9" y="3" width="6" height="5" rx="1"/>
+      <rect x="3" y="16" width="6" height="5" rx="1"/>
+      <rect x="15" y="16" width="6" height="5" rx="1"/>
+      <path d="M12 8v4"/>
+      <path d="M6 16v-4h12v4"/>
+    </symbol>
+    <symbol id="icon-sliders" viewBox="0 0 24 24">
+      <path d="M4 6h6"/>
+      <path d="M14 6h6"/>
+      <circle cx="12" cy="6" r="2"/>
+      <path d="M4 18h10"/>
+      <path d="M18 18h2"/>
+      <circle cx="16" cy="18" r="2"/>
+    </symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#/home" aria-label="返回首页">
+        <span class="brand-mark">
+          <svg><use href="#icon-plane"></use></svg>
+        </span>
+        <span class="brand-copy">
+          <strong>AeroPrep</strong>
+          <small>AHM STUDY LAB</small>
+        </span>
+      </a>
+
+      <nav class="side-nav" aria-label="主导航">
+        <p class="nav-label">学习空间</p>
+        <a class="nav-item" href="#/home" data-nav="home">
+          <svg><use href="#icon-home"></use></svg>
+          <span>今日概览</span>
+        </a>
+        <a class="nav-item" href="#/practice" data-nav="practice">
+          <svg><use href="#icon-play"></use></svg>
+          <span>开始刷题</span>
+          <span class="nav-dot"></span>
+        </a>
+        <a class="nav-item" href="#/bank" data-nav="bank">
+          <svg><use href="#icon-grid"></use></svg>
+          <span>全部题库</span>
+        </a>
+        <p class="nav-label nav-label-spaced">我的学习</p>
+        <a class="nav-item" href="#/wrong" data-nav="wrong">
+          <svg><use href="#icon-alert"></use></svg>
+          <span>错题本</span>
+          <span class="nav-count" id="nav-wrong-count">0</span>
+        </a>
+        <a class="nav-item" href="#/favorites" data-nav="favorites">
+          <svg><use href="#icon-bookmark"></use></svg>
+          <span>我的收藏</span>
+          <span class="nav-count" id="nav-favorite-count">0</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-progress-card">
+          <div class="sidebar-progress-head">
+            <span class="mini-label">COURSE PROGRESS</span>
+            <strong id="sidebar-percent">0%</strong>
+          </div>
+          <div class="progress-track progress-track-dark">
+            <span id="sidebar-progress-fill" style="width:0%"></span>
+          </div>
+          <p><span id="sidebar-solved">0</span> / <span id="sidebar-total">55</span> 道题已完成</p>
+        </div>
+        <div class="profile-row">
+          <span class="profile-avatar">航</span>
+          <span class="profile-copy">
+            <strong>2026 秋季课程</strong>
+            <small>健康监测与故障诊断</small>
+          </span>
+          <span class="status-dot" title="本地进度已保存"></span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="打开导航">
+            <svg><use href="#icon-menu"></use></svg>
+          </button>
+          <div class="breadcrumb">
+            <span>学习空间</span>
+            <span class="breadcrumb-sep">/</span>
+            <strong id="page-label">今日概览</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="search-trigger" id="search-trigger" type="button">
+            <svg><use href="#icon-search"></use></svg>
+            <span>搜索题目</span>
+            <kbd>/</kbd>
+          </button>
+          <div class="streak-pill" title="连续学习天数">
+            <svg><use href="#icon-flame"></use></svg>
+            <span><strong id="streak-days">0</strong> 天</span>
+          </div>
+          <span class="top-avatar">航</span>
+        </div>
+      </header>
+
+      <main id="app" class="app-main" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <nav class="mobile-nav" aria-label="移动端导航">
+    <a href="#/home" data-nav="home">
+      <svg><use href="#icon-home"></use></svg>
+      <span>概览</span>
+    </a>
+    <a href="#/practice" data-nav="practice">
+      <svg><use href="#icon-play"></use></svg>
+      <span>刷题</span>
+    </a>
+    <a href="#/bank" data-nav="bank">
+      <svg><use href="#icon-grid"></use></svg>
+      <span>题库</span>
+    </a>
+    <a href="#/wrong" data-nav="wrong">
+      <svg><use href="#icon-alert"></use></svg>
+      <span>错题</span>
+    </a>
+    <a href="#/favorites" data-nav="favorites">
+      <svg><use href="#icon-bookmark"></use></svg>
+      <span>收藏</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-scrim" id="sidebar-scrim"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

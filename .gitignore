@@ -1,0 +1,5 @@
+.edge-profile*/
+screenshot-*.png
+tmp/
+.DS_Store
+Thumbs.db
