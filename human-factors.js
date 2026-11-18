@@ -32,6 +32,7 @@ const hfBankState = { query: "", type: "all", chapter: "all" };
 let hfSession = null;
 let hfShortSession = null;
 let hfToastTimer = null;
+let hfAutoAdvanceTimer = null;
 
 function hfIcon(name, className = "") {
   return `<svg${className ? ` class="${className}"` : ""} aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
@@ -214,6 +215,7 @@ function hfSetNav(route) {
 function hfHandleRoute() {
   hfCloseSidebar();
   const route = hfRoute();
+  if (route !== "practice") hfClearAutoAdvance();
   if (route === "result" && !hfSession) {
     window.location.hash = "#/home";
     return;
@@ -342,7 +344,7 @@ function hfRenderHome() {
 
       <section class="section">
         <div class="section-heading">
-          <div><h2>选择练习模式</h2><p>客观题点击选项立即判题，简答题先作答再展开答案。</p></div>
+          <div><h2>选择练习模式</h2><p>客观题作答后立即判题，1 秒后自动进入下一题，简答题先作答再展开答案。</p></div>
           <a class="text-link" href="#/bank">查看全部题库 ${hfIcon("arrow")}</a>
         </div>
         <div class="mode-grid">
@@ -473,6 +475,7 @@ function hfRenderPractice() {
         }).join("；")}</span>
       </div>
       <p class="explanation-text">${hfEscape(question.explanation)}</p>
+      <p class="auto-advance-note">${hfSession.index === hfSession.ids.length - 1 ? "1 秒后进入本轮结果" : "1 秒后自动进入下一题"}</p>
       <div class="feedback-foot">
         <span class="feedback-source">来源：${hfEscape(question.source)}</span>
         <span class="feedback-tags">${question.tags.map((tag) => `<span>${hfEscape(tag)}</span>`).join("")}</span>
@@ -514,7 +517,7 @@ function hfRenderPractice() {
             <span class="question-number">${hfSession.index + 1}</span>
             <h2>${hfEscape(question.question)}</h2>
           </div>
-          <p class="option-hint">${question.type === "multiple" ? "多选题：选择全部正确项后提交答案。" : "点击一个选项后立即查看答案与解析。"}</p>
+          <p class="option-hint">${question.type === "multiple" ? "多选题：选择全部正确项后提交，提交后 1 秒自动进入下一题。" : "点击一个选项后立即查看答案与解析，1 秒后自动进入下一题。"}</p>
           <div class="option-list">${optionsMarkup}</div>
           ${question.type === "multiple" && !answer ? `
             <div class="multi-actions">
@@ -524,7 +527,7 @@ function hfRenderPractice() {
           ` : ""}
           ${feedbackMarkup}
           <div class="quiz-footer">
-            <div class="quiz-footer-left"><span class="keyboard-hint">${question.type === "multiple" ? "可选择多项后提交" : "点击选项即判题"}</span></div>
+            <div class="quiz-footer-left"><span class="keyboard-hint">${question.type === "multiple" ? "可选择多项后提交" : "点击选项即判题 · 1 秒后自动下一题"}</span></div>
             <div class="quiz-footer-right">
               <button class="button button-outline button-small" type="button" data-action="previous-question" ${hfSession.index === 0 ? "disabled" : ""}>${hfIcon("left")} 上一题</button>
               <button class="button button-dark button-small" type="button" data-action="next-question">${isLast ? "完成练习" : "下一题"} ${hfIcon("right")}</button>
@@ -570,6 +573,23 @@ function hfChooseOption(key) {
   hfSubmitAnswer([key]);
 }
 
+function hfClearAutoAdvance() {
+  if (hfAutoAdvanceTimer !== null) {
+    clearTimeout(hfAutoAdvanceTimer);
+    hfAutoAdvanceTimer = null;
+  }
+}
+
+function hfScheduleAutoAdvance(questionId, questionIndex) {
+  hfClearAutoAdvance();
+  hfAutoAdvanceTimer = setTimeout(() => {
+    hfAutoAdvanceTimer = null;
+    if (!hfSession || hfSession.index !== questionIndex) return;
+    if (hfSession.ids[hfSession.index] !== questionId) return;
+    hfMoveQuestion(1);
+  }, 1000);
+}
+
 function hfSubmitCurrentMultiple() {
   if (!hfSession) return;
   const question = HF_QUESTION_BY_ID.get(hfSession.ids[hfSession.index]);
@@ -593,6 +613,7 @@ function hfSubmitAnswer(selected) {
   hfSession.answers[question.id] = { selected: normalized, correct };
   hfRecordAnswer(question, normalized, correct);
   hfRenderPractice();
+  hfScheduleAutoAdvance(question.id, hfSession.index);
   requestAnimationFrame(() => {
     const feedback = hfApp.querySelector(".feedback");
     if (!feedback) return;
@@ -603,6 +624,7 @@ function hfSubmitAnswer(selected) {
 
 function hfMoveQuestion(direction) {
   if (!hfSession) return;
+  hfClearAutoAdvance();
   if (direction > 0 && hfSession.index === hfSession.ids.length - 1) {
     hfNavigate("result");
     return;
@@ -614,6 +636,7 @@ function hfMoveQuestion(direction) {
 
 function hfJumpQuestion(index) {
   if (!hfSession) return;
+  hfClearAutoAdvance();
   const nextIndex = Number(index);
   if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= hfSession.ids.length) return;
   hfSession.index = nextIndex;
@@ -622,6 +645,7 @@ function hfJumpQuestion(index) {
 }
 
 function hfStartPractice(ids, title, mode) {
+  hfClearAutoAdvance();
   const uniqueIds = [...new Set(ids)].filter((id) => HF_QUESTION_BY_ID.has(id));
   if (!uniqueIds.length) {
     hfToast("这里还没有可练习的题目");

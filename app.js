@@ -33,6 +33,7 @@ const bankState = { query: "", type: "all", category: "all" };
 let session = null;
 let shortSession = null;
 let toastTimer = null;
+let autoAdvanceTimer = null;
 
 function icon(name, className = "") {
   return `<svg${className ? ` class="${className}"` : ""} aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
@@ -265,6 +266,7 @@ function navigate(route) {
 function handleRoute() {
   closeSidebar();
   const route = getCurrentRoute();
+  if (route !== "practice") clearAutoAdvance();
 
   if (route === "result" && !session) {
     window.location.hash = "#/home";
@@ -510,7 +512,7 @@ function renderHome() {
 
           <article class="tip-card">
             ${icon("spark")}
-            <p><strong>小提示</strong>单选题点击选项后立即判题；简答题先写关键词，再展开参考答案并做自评。也可以<a class="text-link" href="output/pdf/飞机健康监测与故障诊断_题库.pdf" target="_blank" rel="noopener">打开 PDF 题库 ${icon("arrow")}</a>。</p>
+            <p><strong>小提示</strong>客观题作答后立即判题，1 秒后自动进入下一题；简答题先写关键词，再展开参考答案并做自评。也可以<a class="text-link" href="output/pdf/飞机健康监测与故障诊断_题库.pdf" target="_blank" rel="noopener">打开 PDF 题库 ${icon("arrow")}</a>。</p>
           </article>
         </aside>
       </div>
@@ -529,6 +531,7 @@ function getWeakestCategory() {
 }
 
 function startPractice(ids, title, mode) {
+  clearAutoAdvance();
   const uniqueIds = [...new Set(ids)].filter((id) => QUESTION_BY_ID.has(id));
   if (!uniqueIds.length) {
     showToast("这里还没有可练习的题目");
@@ -643,6 +646,7 @@ function renderPractice() {
         }).join("；")}</span>
       </div>
       <p class="explanation-text">${escapeHTML(currentQuestion.explanation)}</p>
+      <p class="auto-advance-note">${isLast ? "1 秒后进入本轮结果" : "1 秒后自动进入下一题"}</p>
       <div class="feedback-foot">
         <span class="feedback-source">来源：${escapeHTML(currentQuestion.source)}</span>
         <span class="feedback-tags">${currentQuestion.tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("")}</span>
@@ -709,7 +713,7 @@ function renderPractice() {
               aria-label="${state.favorites.includes(currentQuestion.id) ? "取消收藏" : "收藏此题"}"
             >${icon("star")}</button>
           </div>
-          ${currentQuestion.type === "multiple" ? `<p class="option-hint">多选题：可选择多个选项，选好后提交答案。</p>` : `<p class="option-hint">点击一个选项后立即查看答案与解析。</p>`}
+          ${currentQuestion.type === "multiple" ? `<p class="option-hint">多选题：选择全部正确项后提交，提交后 1 秒自动进入下一题。</p>` : `<p class="option-hint">点击一个选项后立即查看答案与解析，1 秒后自动进入下一题。</p>`}
 
           <div class="option-list">${optionsMarkup}</div>
 
@@ -1136,6 +1140,23 @@ function chooseOption(key) {
   submitAnswer([key]);
 }
 
+function clearAutoAdvance() {
+  if (autoAdvanceTimer !== null) {
+    clearTimeout(autoAdvanceTimer);
+    autoAdvanceTimer = null;
+  }
+}
+
+function scheduleAutoAdvance(questionId, questionIndex) {
+  clearAutoAdvance();
+  autoAdvanceTimer = setTimeout(() => {
+    autoAdvanceTimer = null;
+    if (!session || session.index !== questionIndex) return;
+    if (session.ids[session.index] !== questionId) return;
+    moveQuestion(1);
+  }, 1000);
+}
+
 function submitCurrentMultiple() {
   if (!session) return;
   const question = QUESTION_BY_ID.get(session.ids[session.index]);
@@ -1161,6 +1182,8 @@ function submitAnswer(selected) {
   recordAnswer(question, normalized, correct);
   renderPractice();
 
+  scheduleAutoAdvance(question.id, session.index);
+
   requestAnimationFrame(() => {
     const feedback = app.querySelector(".feedback");
     if (!feedback) return;
@@ -1171,6 +1194,7 @@ function submitAnswer(selected) {
 
 function moveQuestion(direction) {
   if (!session) return;
+  clearAutoAdvance();
   if (direction > 0 && session.index === session.ids.length - 1) {
     finishSession();
     return;
@@ -1182,6 +1206,7 @@ function moveQuestion(direction) {
 
 function jumpToQuestion(index) {
   if (!session) return;
+  clearAutoAdvance();
   const nextIndex = Number(index);
   if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= session.ids.length) return;
   session.index = nextIndex;

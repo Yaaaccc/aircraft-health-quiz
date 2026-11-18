@@ -2016,6 +2016,39 @@ svg {
   font-size: 8.5px;
 }
 
+.auto-advance-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.auto-advance-note::before {
+  content: "";
+  width: 52px;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #16846f, #8ecfc1);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: auto-advance-countdown 1s linear forwards;
+}
+
+@keyframes auto-advance-countdown {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-advance-note::before {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
+
 .feedback.is-wrong .feedback-source {
   color: #a88a87;
 }
