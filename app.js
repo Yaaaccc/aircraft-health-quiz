@@ -3,7 +3,9 @@ const SHORT_ANSWERS = window.SHORT_ANSWERS || [];
 const META = window.QUIZ_META || { title: "飞机健康监测与故障诊断", subtitle: "课程复习题库" };
 const QUESTION_BY_ID = new Map(QUESTIONS.map((question) => [question.id, question]));
 const SHORT_BY_ID = new Map(SHORT_ANSWERS.map((question) => [question.id, question]));
+const MOCK_EXAM = window.HEALTH_MOCK_EXAM || null;
 const STORAGE_KEY = "aeroprep-state-v1";
+const MOCK_STORAGE_KEY = "aeroprep-health-mock-exam-state-v1";
 
 const CATEGORY_META = {
   "传感器与测量": { icon: "gauge", color: "#0d8d7e", soft: "#e1f6f1" },
@@ -21,6 +23,7 @@ const PAGE_LABEL = {
   practice: "刷题练习",
   bank: "全部题库",
   short: "简答练习",
+  mock: "综合模拟卷",
   wrong: "错题本",
   favorites: "我的收藏",
   result: "练习结果",
@@ -116,6 +119,53 @@ function loadState() {
 }
 
 let state = loadState();
+
+function defaultMockState() {
+  return {
+    objective: {},
+    drafts: {},
+    revealed: {},
+    fillDrafts: {},
+    subjectiveDrafts: {}
+  };
+}
+
+function loadMockState() {
+  const base = defaultMockState();
+  try {
+    const saved = JSON.parse(localStorage.getItem(MOCK_STORAGE_KEY) || "null");
+    if (!saved || typeof saved !== "object") return base;
+    return {
+      ...base,
+      ...saved,
+      objective: saved.objective && typeof saved.objective === "object"
+        ? Object.fromEntries(
+          Object.entries(saved.objective).filter(([id, value]) => (
+            QUESTION_BY_ID.has(id) && value && typeof value === "object"
+          ))
+        )
+        : {},
+      drafts: saved.drafts && typeof saved.drafts === "object" ? saved.drafts : {},
+      revealed: saved.revealed && typeof saved.revealed === "object" ? saved.revealed : {},
+      fillDrafts: saved.fillDrafts && typeof saved.fillDrafts === "object" ? saved.fillDrafts : {},
+      subjectiveDrafts: saved.subjectiveDrafts && typeof saved.subjectiveDrafts === "object"
+        ? saved.subjectiveDrafts
+        : {}
+    };
+  } catch {
+    return base;
+  }
+}
+
+let mockState = loadMockState();
+
+function saveMockState() {
+  try {
+    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(mockState));
+  } catch {
+    showToast("浏览器未能保存模拟卷作答");
+  }
+}
 
 function saveState() {
   try {
@@ -228,6 +278,8 @@ function updateChrome() {
   const mastered = Object.values(state.shortProgress).filter((item) => item.status === "mastered").length;
   const shortCount = document.getElementById("nav-short-count");
   if (shortCount) shortCount.textContent = `${mastered}/${SHORT_ANSWERS.length}`;
+  const mockCount = document.getElementById("nav-mock-count");
+  if (mockCount) mockCount.textContent = `${mockCompletedCount()}/${mockQuestionCount()}`;
   document.getElementById("streak-days").textContent = currentStreak();
 }
 
@@ -305,6 +357,7 @@ function handleRoute() {
   else if (route === "practice") renderPractice();
   else if (route === "bank") renderBankPage();
   else if (route === "short") renderShortPractice();
+  else if (route === "mock") renderMockExam();
   else if (route === "wrong") renderCollection("wrong");
   else if (route === "favorites") renderCollection("favorites");
   else if (route === "result") renderResult();
@@ -323,6 +376,8 @@ function renderHome() {
   const todayCount = state.stats.todayCount;
   const dailyGoal = 20;
   const dailyPercent = Math.min(100, Math.round((todayCount / dailyGoal) * 100));
+  const mockSolved = mockCompletedCount();
+  const mockTotal = mockQuestionCount();
   const dateText = new Intl.DateTimeFormat("zh-CN", {
     month: "long",
     day: "numeric",
@@ -437,6 +492,22 @@ function renderHome() {
         </article>
       </div>
 
+      <section class="mock-home-entry">
+        <span class="mock-home-entry-icon">${icon("layers")}</span>
+        <div class="mock-home-entry-copy">
+          <span class="mini-label">MOCK PAPER · 100 POINTS</span>
+          <h2>健康监测综合模拟卷</h2>
+          <p>10 单选 · 5 多选 · 9 填空 · 6 简答 · 2 计算，按复习提纲组卷，作业原题优先。</p>
+        </div>
+        <div class="mock-home-entry-progress">
+          <strong>${mockSolved}<small> / ${mockTotal}</small></strong>
+          <span>已完成题目</span>
+        </div>
+        <button class="button button-dark" type="button" data-action="open-mock">
+          ${icon("arrow")} 打开模拟卷
+        </button>
+      </section>
+
       <section class="section">
         <div class="section-heading">
           <div>
@@ -518,6 +589,375 @@ function renderHome() {
       </div>
     </div>
   `;
+}
+
+function mockSectionQuestions(section) {
+  if (!section) return [];
+  if (Array.isArray(section.questionIds)) {
+    return section.questionIds
+      .map((id) => (section.type === "short" ? SHORT_BY_ID.get(id) : QUESTION_BY_ID.get(id)))
+      .filter(Boolean);
+  }
+  return Array.isArray(section.questions) ? section.questions : [];
+}
+
+function mockQuestionCount() {
+  if (!MOCK_EXAM) return 0;
+  return MOCK_EXAM.sections.reduce((sum, section) => sum + mockSectionQuestions(section).length, 0);
+}
+
+function mockObjectiveStats() {
+  if (!MOCK_EXAM) {
+    return { total: 0, answered: 0, correct: 0, earned: 0 };
+  }
+  let total = 0;
+  let answered = 0;
+  let correct = 0;
+  let earned = 0;
+  MOCK_EXAM.sections
+    .filter((section) => section.type === "single" || section.type === "multiple")
+    .forEach((section) => {
+      mockSectionQuestions(section).forEach((question) => {
+        total += section.score;
+        const answer = mockState.objective[question.id];
+        if (!answer) return;
+        answered += 1;
+        if (answer.correct) {
+          correct += 1;
+          earned += section.score;
+        }
+      });
+    });
+  return { total, answered, correct, earned };
+}
+
+function mockCompletedCount() {
+  if (!MOCK_EXAM) return 0;
+  let completed = 0;
+  MOCK_EXAM.sections.forEach((section) => {
+    mockSectionQuestions(section).forEach((question) => {
+      if (section.type === "single" || section.type === "multiple") {
+        if (mockState.objective[question.id]) completed += 1;
+      } else if (mockState.revealed[question.id]) {
+        completed += 1;
+      }
+    });
+  });
+  return completed;
+}
+
+function mockAnswerKeys(question) {
+  return [...question.answer].sort();
+}
+
+function mockOptionMarkup(question, section) {
+  const answer = mockState.objective[question.id];
+  const draft = mockState.drafts[question.id] || [];
+  const options = question.options.map((option) => {
+    const isAnswered = Boolean(answer);
+    const isCorrectOption = question.answer.includes(option.key);
+    const isSelected = isAnswered ? answer.selected.includes(option.key) : draft.includes(option.key);
+    let stateClass = "";
+    if (isAnswered) {
+      if (isCorrectOption) stateClass = " is-correct";
+      else if (isSelected) stateClass = " is-wrong";
+    } else if (isSelected) {
+      stateClass = " is-selected";
+    }
+    return `
+      <button class="mock-option${stateClass}" type="button" data-action="mock-choose" data-id="${question.id}" data-key="${option.key}" ${isAnswered ? "disabled" : ""}>
+        <span class="mock-option-key">${option.key}</span>
+        <span class="mock-option-text">${escapeHTML(option.text)}</span>
+        <span class="mock-option-mark">${isAnswered && isCorrectOption ? icon("check") : isAnswered && isSelected ? icon("x") : isSelected ? icon("check") : ""}</span>
+      </button>
+    `;
+  }).join("");
+  const answerMarkup = answer ? `
+    <div class="mock-answer-box${answer.correct ? "" : " is-wrong"}">
+      <div class="mock-answer-head">
+        <strong>${answer.correct ? "回答正确" : "参考答案"}</strong>
+        <span>${section.score} 分</span>
+      </div>
+      <div class="mock-answer-line">
+        <span>正确选项</span>
+        ${question.answer.map((key) => `<b>${key}</b>`).join("")}
+        <span>· ${question.answer.map((key) => {
+          const option = question.options.find((item) => item.key === key);
+          return option ? escapeHTML(option.text) : key;
+        }).join("；")}</span>
+      </div>
+      <p>${escapeHTML(question.explanation || "暂无解析。")}</p>
+    </div>
+  ` : "";
+  const multipleSubmit = question.type === "multiple" && !answer ? `
+    <div class="mock-multi-row">
+      <span>${draft.length ? `已选择 ${draft.length} 项` : "请选择全部正确选项"}</span>
+      <button class="button button-dark button-small" type="button" data-action="mock-submit-multi" data-id="${question.id}" ${draft.length ? "" : "disabled"}>提交本题 ${icon("check")}</button>
+    </div>
+  ` : "";
+  return `
+    <div class="mock-options">${options}</div>
+    ${multipleSubmit}
+    ${answerMarkup}
+  `;
+}
+
+function mockObjectiveQuestionMarkup(question, section, index) {
+  return `
+    <article class="mock-question" id="mock-${question.id}">
+      <div class="mock-question-head">
+        <span class="mock-question-number">${String(index + 1).padStart(2, "0")}</span>
+        <div class="mock-question-kicker">
+          <span class="type-tag ${question.type === "multiple" ? "multiple" : ""}">${TYPE_LABEL[question.type]}</span>
+          <span class="category-tag" style="--cat-color:${getCategoryMeta(question.category).color};--cat-soft:${getCategoryMeta(question.category).soft}">${escapeHTML(question.category)}</span>
+          <span class="mock-question-source">${escapeHTML(question.source)}</span>
+        </div>
+        <span class="mock-points">${section.score} 分</span>
+      </div>
+      <h3>${escapeHTML(question.question)}</h3>
+      ${mockOptionMarkup(question, section)}
+    </article>
+  `;
+}
+
+function mockFillMarkup(question) {
+  const draft = mockState.fillDrafts[question.id] || [];
+  const answers = question.answers || [];
+  const revealed = Boolean(mockState.revealed[question.id]);
+  const inputs = answers.map((_, index) => `
+    <label class="mock-blank">
+      <span>空 ${index + 1}</span>
+      <input data-mock-fill="${question.id}" data-index="${index}" value="${escapeHTML(draft[index] || "")}" autocomplete="off" placeholder="填写答案">
+    </label>
+  `).join("");
+  return `
+    <article class="mock-question mock-question-subjective" id="mock-${question.id}">
+      <div class="mock-question-head">
+        <span class="mock-question-number">${String(question.number).padStart(2, "0")}</span>
+        <div class="mock-question-kicker"><span class="type-tag">填空题</span><span class="mock-question-source">${escapeHTML(question.source)}</span></div>
+        <span class="mock-points">2 空 / 2 分</span>
+      </div>
+      <h3>${escapeHTML(question.question)}</h3>
+      <div class="mock-blank-grid">${inputs}</div>
+      <div class="mock-subjective-actions">
+        <button class="button button-outline button-small" type="button" data-action="mock-reveal" data-id="${question.id}">${revealed ? "收起参考答案" : "查看参考答案"} ${icon("book")}</button>
+      </div>
+      ${revealed ? `
+        <div class="mock-reference">
+          <div class="mock-reference-head"><strong>参考答案</strong><span>按关键词核对</span></div>
+          <div class="mock-answer-chips">${answers.map((answer, index) => `<span>空 ${index + 1}：${escapeHTML(answer)}</span>`).join("")}</div>
+          <p>${escapeHTML(question.explanation || "")}</p>
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+function mockShortMarkup(question, section, index) {
+  const revealed = Boolean(mockState.revealed[question.id]);
+  const draft = mockState.subjectiveDrafts[question.id] || "";
+  return `
+    <article class="mock-question mock-question-subjective" id="mock-${question.id}">
+      <div class="mock-question-head">
+        <span class="mock-question-number">${String(index + 1).padStart(2, "0")}</span>
+        <div class="mock-question-kicker"><span class="type-tag short-type-tag">简答题</span><span class="mock-question-source">${escapeHTML(question.source)}</span></div>
+        <span class="mock-points">${section.score} 分</span>
+      </div>
+      <h3>${escapeHTML(question.question)}</h3>
+      <textarea class="mock-textarea" data-mock-draft="${question.id}" rows="5" placeholder="先写下关键词和作答框架，再看参考答案。">${escapeHTML(draft)}</textarea>
+      <div class="mock-subjective-actions">
+        <button class="button button-outline button-small" type="button" data-action="mock-reveal" data-id="${question.id}">${revealed ? "收起参考答案" : "查看参考答案"} ${icon("book")}</button>
+      </div>
+      ${revealed ? shortAnswerMarkup(question) : ""}
+    </article>
+  `;
+}
+
+function mockCalcMarkup(question) {
+  const revealed = Boolean(mockState.revealed[question.id]);
+  const draft = mockState.subjectiveDrafts[question.id] || "";
+  return `
+    <article class="mock-question mock-question-subjective mock-calc-question" id="mock-${question.id}">
+      <div class="mock-question-head">
+        <span class="mock-question-number">${String(question.number).padStart(2, "0")}</span>
+        <div class="mock-question-kicker"><span class="type-tag">计算题</span><span class="mock-question-source">${escapeHTML(question.source)}</span></div>
+        <span class="mock-points">16 分</span>
+      </div>
+      <h3>${escapeHTML(question.question)}</h3>
+      <div class="mock-calc-asks">${question.asks.map((item) => `<span>${escapeHTML(item)}</span>`).join("")}</div>
+      <textarea class="mock-textarea" data-mock-draft="${question.id}" rows="6" placeholder="写出关键公式、代入过程和结论。">${escapeHTML(draft)}</textarea>
+      <div class="mock-subjective-actions">
+        <button class="button button-outline button-small" type="button" data-action="mock-reveal" data-id="${question.id}">${revealed ? "收起参考解答" : "查看参考解答"} ${icon("book")}</button>
+      </div>
+      ${revealed ? `
+        <div class="mock-reference">
+          <div class="mock-reference-head"><strong>参考解答</strong><span>按步骤核对</span></div>
+          ${question.formula ? `<div class="short-formula">${escapeHTML(question.formula)}</div>` : ""}
+          ${question.solution.map((section) => `<section class="mock-solution-section"><h4>${escapeHTML(section.heading)}</h4><p>${escapeHTML(section.body)}</p></section>`).join("")}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+function mockSectionMarkup(section, sectionIndex) {
+  const questions = mockSectionQuestions(section);
+  let questionsMarkup = "";
+  if (section.type === "single" || section.type === "multiple") {
+    questionsMarkup = questions.map((question, index) => mockObjectiveQuestionMarkup(question, section, index)).join("");
+  } else if (section.type === "fill") {
+    questionsMarkup = questions.map((question) => mockFillMarkup(question)).join("");
+  } else if (section.type === "short") {
+    questionsMarkup = questions.map((question, index) => mockShortMarkup(question, section, index)).join("");
+  } else if (section.type === "calc") {
+    questionsMarkup = questions.map((question) => mockCalcMarkup(question)).join("");
+  }
+  return `
+    <section class="mock-section" id="mock-section-${section.id}">
+      <div class="mock-section-head">
+        <div>
+          <span class="mock-section-index">SECTION ${String(sectionIndex + 1).padStart(2, "0")}</span>
+          <h2>${escapeHTML(section.title)}</h2>
+          <p>${escapeHTML(section.instruction)}</p>
+        </div>
+        <span class="mock-section-points">${questions.length * section.score} 分</span>
+      </div>
+      <div class="mock-question-list">${questionsMarkup}</div>
+    </section>
+  `;
+}
+
+function renderMockExam() {
+  if (!MOCK_EXAM) {
+    app.innerHTML = `<div class="empty-state"><h2>模拟卷还没有加载</h2><p>请刷新页面后重试。</p></div>`;
+    return;
+  }
+  const stats = mockObjectiveStats();
+  const completed = mockCompletedCount();
+  const total = mockQuestionCount();
+  const sectionsMarkup = MOCK_EXAM.sections.map(mockSectionMarkup).join("");
+  app.innerHTML = `
+    <div class="mock-view view-enter">
+      <section class="mock-hero">
+        <div class="mock-hero-copy">
+          <p class="eyebrow">HEALTH MONITORING · MOCK PAPER 01</p>
+          <h1>健康监测，<span>整套模拟。</span></h1>
+          <p>${escapeHTML(MOCK_EXAM.subtitle)}。题型严格按复习提纲组织，客观题和简答题优先使用作业与提纲原题。</p>
+          <div class="hero-actions">
+            <button class="button button-primary" type="button" data-action="mock-reveal-all">${icon("check")} 展开主观题答案</button>
+            <button class="button button-ghost-light" type="button" data-action="mock-print">${icon("edit")} 打印试卷</button>
+          </div>
+          <div class="hero-meta">
+            <span class="hero-meta-item">${icon("layers")}<strong>${total}</strong> 道题</span>
+            <span class="hero-meta-item">${icon("target")}<strong>${MOCK_EXAM.totalScore}</strong> 分</span>
+            <span class="hero-meta-item">${icon("clock")}<strong>${MOCK_EXAM.duration}</strong></span>
+          </div>
+        </div>
+        <div class="mock-hero-score">
+          <span class="mock-hero-score-label">OBJECTIVE SCORE</span>
+          <strong>${stats.earned}<small> / ${stats.total}</small></strong>
+          <span>客观题实时得分</span>
+          <div class="mock-hero-progress"><span style="width:${stats.total ? Math.round(stats.earned / stats.total * 100) : 0}%"></span></div>
+          <div class="mock-hero-score-foot"><span>${stats.answered} / ${stats.total} 已答</span><span>${completed} / ${total} 全卷已完成</span></div>
+        </div>
+      </section>
+
+      <section class="mock-paper">
+        <header class="mock-paper-head">
+          <div>
+            <span class="mini-label">AEROPREP · HEALTH MONITORING</span>
+            <h2>${escapeHTML(MOCK_EXAM.title)}</h2>
+            <p>${escapeHTML(MOCK_EXAM.sourceNote)}</p>
+          </div>
+          <div class="mock-paper-head-actions">
+            <button class="button button-outline button-small" type="button" data-action="mock-reset">重置作答</button>
+          </div>
+        </header>
+        <div class="mock-section-nav">
+          ${MOCK_EXAM.sections.map((section) => `<button type="button" data-action="mock-jump" data-target="mock-section-${section.id}">${escapeHTML(section.title.replace(/^[一二三四五]、/, ""))}<span>${mockSectionQuestions(section).length} 题</span></button>`).join("")}
+        </div>
+        ${sectionsMarkup}
+        <footer class="mock-paper-foot">
+          <span>${escapeHTML(MOCK_EXAM.sourceNote)}</span>
+          <button class="button button-dark button-small" type="button" data-action="mock-print">${icon("edit")} 打印/另存为 PDF</button>
+        </footer>
+      </section>
+    </div>
+  `;
+}
+
+function mockRecordObjective(question) {
+  const selected = [...new Set(mockState.drafts[question.id] || [])].sort();
+  if (!selected.length) return;
+  const expected = mockAnswerKeys(question);
+  const correct = selected.length === expected.length
+    && selected.every((key, index) => key === expected[index]);
+  mockState.objective[question.id] = { selected, correct };
+  mockState.drafts[question.id] = [];
+  saveMockState();
+  updateChrome();
+  renderMockExam();
+}
+
+function mockChooseOption(questionId, key) {
+  const question = QUESTION_BY_ID.get(questionId);
+  if (!question || mockState.objective[questionId]) return;
+  if (question.type === "multiple") {
+    const draft = mockState.drafts[questionId] || [];
+    mockState.drafts[questionId] = draft.includes(key)
+      ? draft.filter((item) => item !== key)
+      : [...draft, key];
+    saveMockState();
+    renderMockExam();
+    return;
+  }
+  mockState.drafts[questionId] = [key];
+  mockRecordObjective(question);
+}
+
+function mockSubmitMultiple(questionId) {
+  const question = QUESTION_BY_ID.get(questionId);
+  if (!question || question.type !== "multiple" || mockState.objective[questionId]) return;
+  if (!(mockState.drafts[questionId] || []).length) {
+    showToast("请先选择至少一个选项");
+    return;
+  }
+  mockRecordObjective(question);
+}
+
+function mockReveal(questionId) {
+  mockState.revealed[questionId] = !mockState.revealed[questionId];
+  saveMockState();
+  updateChrome();
+  renderMockExam();
+}
+
+function mockRevealAll() {
+  if (!MOCK_EXAM) return;
+  MOCK_EXAM.sections
+    .filter((section) => section.type === "fill" || section.type === "short" || section.type === "calc")
+    .forEach((section) => {
+      mockSectionQuestions(section).forEach((question) => {
+        mockState.revealed[question.id] = true;
+      });
+    });
+  saveMockState();
+  updateChrome();
+  renderMockExam();
+  showToast("主观题参考答案已展开");
+}
+
+function mockReset() {
+  if (!window.confirm("确定清空模拟卷的全部作答和草稿吗？题库进度不会受影响。")) return;
+  mockState = defaultMockState();
+  saveMockState();
+  updateChrome();
+  renderMockExam();
+  showToast("模拟卷已重置");
+}
+
+function mockPrint() {
+  window.print();
 }
 
 function getWeakestCategory() {
@@ -1561,6 +2001,22 @@ app.addEventListener("click", (event) => {
     );
   } else if (action === "start-short") {
     startShortPractice();
+  } else if (action === "open-mock") {
+    navigate("mock");
+  } else if (action === "mock-choose") {
+    mockChooseOption(id, actionTarget.dataset.key);
+  } else if (action === "mock-submit-multi") {
+    mockSubmitMultiple(id);
+  } else if (action === "mock-reveal") {
+    mockReveal(id);
+  } else if (action === "mock-reveal-all") {
+    mockRevealAll();
+  } else if (action === "mock-print") {
+    mockPrint();
+  } else if (action === "mock-reset") {
+    mockReset();
+  } else if (action === "mock-jump") {
+    document.getElementById(actionTarget.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (action === "reveal-short") {
     revealShortAnswer();
   } else if (action === "assess-short") {
@@ -1621,6 +2077,24 @@ app.addEventListener("click", (event) => {
 });
 
 app.addEventListener("input", (event) => {
+  const fillDraft = event.target.closest("[data-mock-fill]");
+  if (fillDraft) {
+    const questionId = fillDraft.dataset.mockFill;
+    const index = Number(fillDraft.dataset.index);
+    const drafts = Array.isArray(mockState.fillDrafts[questionId])
+      ? [...mockState.fillDrafts[questionId]]
+      : [];
+    drafts[index] = fillDraft.value;
+    mockState.fillDrafts[questionId] = drafts;
+    saveMockState();
+    return;
+  }
+  const mockDraft = event.target.closest("[data-mock-draft]");
+  if (mockDraft) {
+    mockState.subjectiveDrafts[mockDraft.dataset.mockDraft] = mockDraft.value;
+    saveMockState();
+    return;
+  }
   const draft = event.target.closest("[data-short-draft]");
   if (!draft) return;
   saveShortDraft(draft.dataset.shortDraft, draft.value);
