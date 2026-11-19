@@ -15,13 +15,32 @@ const HF_QUESTION_BY_ID = new Map(HF_QUESTIONS.map((question) => [question.id, q
 const HF_SHORT_BY_ID = new Map(HF_SHORT_ANSWERS.map((question) => [question.id, question]));
 const HF_CHAPTERS = [...new Set(HF_QUESTIONS.map((question) => question.chapter))];
 const HF_SHORT_CHAPTERS = [...new Set(HF_SHORT_ANSWERS.map((question) => question.chapter))];
+const HFQ_KEYS = ["A", "B", "C", "D", "E", "F"];
+const HFQ_QUIZZES = (window.HF_QUIZZES || []).map((quiz) => ({
+  ...quiz,
+  questions: quiz.questions.map((question) => ({
+    ...question,
+    options: question.options.map((text, index) => ({
+      key: HFQ_KEYS[index],
+      text
+    })),
+    answer: question.answer.map((index) => HFQ_KEYS[index])
+  }))
+}));
+const HFQ_QUESTIONS = HFQ_QUIZZES.flatMap((quiz) => quiz.questions);
+const HFQ_QUESTION_BY_ID = new Map(HFQ_QUESTIONS.map((question) => [question.id, question]));
+const HFQ_QUIZ_BY_ID = new Map(HFQ_QUIZZES.map((quiz) => [quiz.id, quiz]));
 const HF_STORAGE_KEY = "aeroprep-human-factors-state-v1";
+const HFQ_STORAGE_KEY = "aeroprep-hf-teacher-quizzes-state-v1";
 const HF_TYPE_LABEL = { single: "单选题", multiple: "多选题", judge: "判断题" };
 const HF_PAGE_LABEL = {
   home: "今日概览",
   practice: "刷题练习",
   bank: "全部题库",
   short: "简答练习",
+  quizzes: "老师测验",
+  "quiz-practice": "测验练习",
+  "quiz-result": "测验结果",
   wrong: "错题本",
   result: "练习结果"
 };
@@ -33,6 +52,8 @@ let hfSession = null;
 let hfShortSession = null;
 let hfToastTimer = null;
 let hfAutoAdvanceTimer = null;
+let hfQuizSession = null;
+let hfQuizAutoAdvanceTimer = null;
 
 function hfIcon(name, className = "") {
   return `<svg${className ? ` class="${className}"` : ""} aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
@@ -113,6 +134,53 @@ function hfSaveState() {
   }
 }
 
+function hfqDefaultState() {
+  return {
+    progress: {},
+    wrong: [],
+    stats: {
+      totalAnswered: 0,
+      totalCorrect: 0,
+      sessions: 0
+    }
+  };
+}
+
+function hfqLoadState() {
+  const base = hfqDefaultState();
+  try {
+    const saved = JSON.parse(localStorage.getItem(HFQ_STORAGE_KEY) || "null");
+    if (!saved || typeof saved !== "object") return base;
+    return {
+      ...base,
+      ...saved,
+      progress: saved.progress && typeof saved.progress === "object"
+        ? Object.fromEntries(
+          Object.entries(saved.progress).filter(([id, value]) => (
+            HFQ_QUESTION_BY_ID.has(id) && value && typeof value === "object"
+          ))
+        )
+        : {},
+      wrong: Array.isArray(saved.wrong)
+        ? saved.wrong.filter((id) => HFQ_QUESTION_BY_ID.has(id))
+        : [],
+      stats: { ...base.stats, ...(saved.stats || {}) }
+    };
+  } catch {
+    return base;
+  }
+}
+
+let hfqState = hfqLoadState();
+
+function hfqSaveState() {
+  try {
+    localStorage.setItem(HFQ_STORAGE_KEY, JSON.stringify(hfqState));
+  } catch {
+    hfToast("浏览器未能保存老师测验进度");
+  }
+}
+
 function hfSolvedCount() {
   return Object.keys(hfState.progress).length;
 }
@@ -126,6 +194,21 @@ function hfOverallPercent() {
 function hfAccuracy() {
   if (!hfState.stats.totalAnswered) return 0;
   return Math.round((hfState.stats.totalCorrect / hfState.stats.totalAnswered) * 100);
+}
+
+function hfqSolvedCount() {
+  return Object.keys(hfqState.progress).length;
+}
+
+function hfqOverallPercent() {
+  return HFQ_QUESTIONS.length
+    ? Math.round((hfqSolvedCount() / HFQ_QUESTIONS.length) * 100)
+    : 0;
+}
+
+function hfqAccuracy() {
+  if (!hfqState.stats.totalAnswered) return 0;
+  return Math.round((hfqState.stats.totalCorrect / hfqState.stats.totalAnswered) * 100);
 }
 
 function hfShuffle(items) {
@@ -176,6 +259,24 @@ function hfRecordAnswer(question, selected, correct) {
   hfUpdateChrome();
 }
 
+function hfqRecordAnswer(question, selected, correct) {
+  const previous = hfqState.progress[question.id] || { attempts: 0, correct: 0 };
+  hfqState.progress[question.id] = {
+    attempts: previous.attempts + 1,
+    correct: previous.correct + (correct ? 1 : 0),
+    lastSelected: selected,
+    lastCorrect: correct,
+    updatedAt: new Date().toISOString()
+  };
+  hfqState.stats.totalAnswered += 1;
+  if (correct) hfqState.stats.totalCorrect += 1;
+  hfqState.wrong = correct
+    ? hfqState.wrong.filter((id) => id !== question.id)
+    : [question.id, ...hfqState.wrong.filter((id) => id !== question.id)];
+  hfqSaveState();
+  hfUpdateChrome();
+}
+
 function hfUpdateChrome() {
   const solved = hfSolvedCount();
   const percent = hfOverallPercent();
@@ -188,6 +289,8 @@ function hfUpdateChrome() {
   const mastered = Object.values(hfState.shortProgress)
     .filter((item) => item.status === "mastered").length;
   document.getElementById("hf-nav-short-count").textContent = `${mastered}/${HF_SHORT_ANSWERS.length}`;
+  const quizCount = document.getElementById("hf-nav-quizzes-count");
+  if (quizCount) quizCount.textContent = `${hfqSolvedCount()}/${HFQ_QUESTIONS.length}`;
 }
 
 function hfCloseSidebar() {
@@ -205,7 +308,9 @@ function hfNavigate(route) {
 }
 
 function hfSetNav(route) {
-  const activeRoute = route === "result" ? "practice" : route;
+  let activeRoute = route;
+  if (route === "result") activeRoute = "practice";
+  if (route === "quiz-practice" || route === "quiz-result") activeRoute = "quizzes";
   document.querySelectorAll("[data-hf-nav]").forEach((link) => {
     link.classList.toggle("is-active", link.dataset.hfNav === activeRoute);
   });
@@ -216,6 +321,7 @@ function hfHandleRoute() {
   hfCloseSidebar();
   const route = hfRoute();
   if (route !== "practice") hfClearAutoAdvance();
+  if (route !== "quiz-practice") hfQuizClearAutoAdvance();
   if (route === "result" && !hfSession) {
     window.location.hash = "#/home";
     return;
@@ -228,6 +334,21 @@ function hfHandleRoute() {
       drafts: {},
       title: "全题库 · 顺序练习",
       mode: "顺序练习",
+      startedAt: Date.now()
+    };
+  }
+  if (route === "quiz-result" && !hfQuizSession) {
+    window.location.hash = "#/quizzes";
+    return;
+  }
+  if (route === "quiz-practice" && !hfQuizSession) {
+    hfQuizSession = {
+      ids: HFQ_QUESTIONS.map((question) => question.id),
+      index: 0,
+      answers: {},
+      drafts: {},
+      title: "老师测验 · 全部 71 题",
+      mode: "全部测验",
       startedAt: Date.now()
     };
   }
@@ -250,6 +371,9 @@ function hfHandleRoute() {
   else if (route === "practice") hfRenderPractice();
   else if (route === "bank") hfRenderBank();
   else if (route === "short") hfRenderShort();
+  else if (route === "quizzes") hfqRenderQuizzes();
+  else if (route === "quiz-practice") hfqRenderPractice();
+  else if (route === "quiz-result") hfqRenderResult();
   else if (route === "wrong") hfRenderWrong();
   else if (route === "result") hfRenderResult();
   else hfRenderHome();
@@ -265,6 +389,9 @@ function hfRenderHome() {
   const todayCount = hfState.stats.todayCount;
   const dailyGoal = 20;
   const dailyPercent = Math.min(100, Math.round((todayCount / dailyGoal) * 100));
+  const quizSolved = hfqSolvedCount();
+  const quizPercent = hfqOverallPercent();
+  const quizWrongCount = hfqState.wrong.length;
 
   const chapterCards = HF_CHAPTERS.map((chapter, index) => {
     const questions = hfChapterQuestions(chapter);
@@ -342,6 +469,21 @@ function hfRenderHome() {
         </article>
       </div>
 
+      <section class="hfq-home-module">
+        <div class="hfq-home-module-mark">${hfIcon("target")}</div>
+        <div class="hfq-home-module-copy">
+          <span class="mini-label">TEACHER'S TESTS · SEPARATE MODULE</span>
+          <h2>老师测验</h2>
+          <p>三份课堂测验共 ${HFQ_QUESTIONS.length} 道题，独立进度、独立错题，不混入课程题库。</p>
+        </div>
+        <div class="hfq-home-module-stats">
+          <span><strong>${quizSolved}<small> / ${HFQ_QUESTIONS.length}</small></strong>已完成</span>
+          <span><strong>${quizPercent}<small>%</small></strong>模块进度</span>
+          <span><strong>${quizWrongCount}</strong>道待复盘</span>
+        </div>
+        <button class="button button-dark" type="button" data-action="go-quizzes">${hfIcon("arrow")} 进入老师测验</button>
+      </section>
+
       <section class="section">
         <div class="section-heading">
           <div><h2>选择练习模式</h2><p>客观题作答后立即判题，1 秒后自动进入下一题，简答题先作答再展开答案。</p></div>
@@ -395,6 +537,503 @@ function hfRenderHome() {
           </article>
         </aside>
       </div>
+    </div>
+  `;
+}
+
+function hfqQuestionsForQuiz(quizId) {
+  const quiz = HFQ_QUIZ_BY_ID.get(quizId);
+  return quiz ? quiz.questions : [];
+}
+
+function hfqTypeCounts(questions) {
+  return questions.reduce((counts, question) => {
+    counts[question.type] = (counts[question.type] || 0) + 1;
+    return counts;
+  }, { single: 0, multiple: 0, judge: 0 });
+}
+
+function hfqQuizStats(quiz) {
+  let completed = 0;
+  let attempts = 0;
+  let correct = 0;
+  let wrong = 0;
+  quiz.questions.forEach((question) => {
+    const progress = hfqState.progress[question.id];
+    if (!progress) return;
+    completed += 1;
+    attempts += progress.attempts || 0;
+    correct += progress.correct || 0;
+    if (!progress.lastCorrect) wrong += 1;
+  });
+  return {
+    total: quiz.questions.length,
+    completed,
+    attempts,
+    correct,
+    wrong,
+    percent: quiz.questions.length
+      ? Math.round((completed / quiz.questions.length) * 100)
+      : 0,
+    accuracy: attempts ? Math.round((correct / attempts) * 100) : 0
+  };
+}
+
+function hfqWrongForQuiz(quizId) {
+  return hfqState.wrong
+    .map((id) => HFQ_QUESTION_BY_ID.get(id))
+    .filter((question) => question && question.quizId === quizId);
+}
+
+function hfqRenderQuizzes() {
+  const solved = hfqSolvedCount();
+  const percent = hfqOverallPercent();
+  const accuracy = hfqAccuracy();
+  const totalWrong = hfqState.wrong.length;
+  const quizCards = HFQ_QUIZZES.map((quiz) => {
+    const stats = hfqQuizStats(quiz);
+    const counts = hfqTypeCounts(quiz.questions);
+    const wrongCount = hfqWrongForQuiz(quiz.id).length;
+    const typeSummary = [
+      counts.single ? `单选 ${counts.single}` : "",
+      counts.multiple ? `多选 ${counts.multiple}` : "",
+      counts.judge ? `判断 ${counts.judge}` : ""
+    ].filter(Boolean).join(" · ");
+    return `
+      <article class="hfq-quiz-card">
+        <div class="hfq-quiz-card-head">
+          <span class="hfq-test-index">TEST ${String(quiz.number).padStart(2, "0")}</span>
+          <span class="hfq-score-pill">满分 ${quiz.totalScore}</span>
+        </div>
+        <h2>${hfEscape(quiz.title)}</h2>
+        <p class="hfq-quiz-summary">${typeSummary} · ${quiz.questions.length} 道题</p>
+        <div class="progress-track hfq-progress-track"><span style="width:${stats.percent}%"></span></div>
+        <div class="hfq-quiz-metrics">
+          <span><strong>${stats.completed}</strong><small> / ${stats.total} 已完成</small></span>
+          <span><strong>${stats.accuracy}%</strong><small> 累计正确率</small></span>
+          <span class="${wrongCount ? "is-warning" : ""}"><strong>${wrongCount}</strong><small> 道待复习</small></span>
+        </div>
+        <div class="hfq-quiz-actions">
+          <button class="button button-dark button-small" type="button" data-action="start-quiz-paper" data-id="${quiz.id}">${hfIcon("play")} 开始本卷</button>
+          <button class="button button-outline button-small" type="button" data-action="start-quiz-paper-wrong" data-id="${quiz.id}" ${wrongCount ? "" : "disabled"}>练本卷错题</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  hfApp.innerHTML = `
+    <div class="quizzes-view view-enter">
+      <section class="hfq-module-hero">
+        <div class="hfq-module-hero-copy">
+          <p class="eyebrow">TEACHER'S TESTS · SEPARATE MODULE</p>
+          <h1>老师测验，<span>单独成册。</span></h1>
+          <p>三份课堂测验已原样收录。这里使用独立进度、独立错题本和独立练习会话，不会改变课程题库的完成度。</p>
+          <div class="hero-actions">
+            <button class="button button-primary" type="button" data-action="start-all-quizzes">${hfIcon("play")} 顺序练全部 ${HFQ_QUESTIONS.length} 题</button>
+            <button class="button button-ghost-light" type="button" data-action="start-quiz-random">${hfIcon("spark")} 随机 20 题</button>
+          </div>
+          <div class="hero-meta">
+            <span class="hero-meta-item">${hfIcon("book")}<strong>${HFQ_QUIZZES.length}</strong> 份测验</span>
+            <span class="hero-meta-item">${hfIcon("layers")}<strong>${HFQ_QUESTIONS.length}</strong> 道题</span>
+            <span class="hero-meta-item">${hfIcon("check")}独立进度</span>
+          </div>
+        </div>
+        <div class="hfq-module-orbit" style="--progress:${percent}">
+          <div class="hfq-module-orbit-center">
+            <strong>${percent}<small>%</small></strong>
+            <span>测验模块进度</span>
+          </div>
+          <span class="hfq-orbit-chip">${hfIcon("target")} ${solved} / ${HFQ_QUESTIONS.length} 已练习</span>
+          <span class="hfq-orbit-chip hfq-orbit-chip-bottom">${hfIcon("alert")} ${totalWrong} 道待复盘</span>
+        </div>
+      </section>
+
+      <div class="stat-strip hfq-stat-strip">
+        <article class="stat-card">
+          <span class="stat-icon tone-amber">${hfIcon("database")}</span>
+          <span class="stat-copy"><span>测验题量</span><strong>${HFQ_QUESTIONS.length}<small>题</small></strong></span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-icon tone-teal">${hfIcon("chart")}</span>
+          <span class="stat-copy"><span>累计正确率</span><strong>${accuracy}<small>%</small></strong></span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-icon tone-blue">${hfIcon("alert")}</span>
+          <span class="stat-copy"><span>待复习</span><strong>${totalWrong}<small>题</small></strong></span>
+        </article>
+      </div>
+
+      <section class="section">
+        <div class="section-heading">
+          <div><h2>按测验练习</h2><p>每份测验按原始顺序和原始分值计分，作答后立即判题。</p></div>
+          <span class="meta-pill">3 份 · 每份满分 100</span>
+        </div>
+        <div class="hfq-quiz-grid">${quizCards}</div>
+      </section>
+
+      <section class="hfq-all-practice">
+        <div class="hfq-all-practice-copy">
+          <span class="hfq-all-practice-icon">${hfIcon("layers")}</span>
+          <div>
+            <h2>全部测验混合练习</h2>
+            <p>三份试卷共 ${HFQ_QUESTIONS.length} 道题，按原始顺序连续作答；结果页按 ${HFQ_QUIZZES.reduce((sum, quiz) => sum + quiz.totalScore, 0)} 分原始总分折算。</p>
+          </div>
+        </div>
+        <div class="hfq-all-practice-actions">
+          <button class="button button-dark" type="button" data-action="start-all-quizzes">${hfIcon("play")} 顺序练全部</button>
+          <button class="button button-outline" type="button" data-action="start-quiz-wrong" ${totalWrong ? "" : "disabled"}>${hfIcon("alert")} 练测验错题 ${totalWrong ? `(${totalWrong})` : ""}</button>
+        </div>
+      </section>
+
+      <div class="hf-source-banner">
+        ${hfIcon("alert")}
+        <div><strong>题库来源与边界：</strong>题目与答案来自任课老师发布的三份测验 Excel。原表未提供官方答案解析，练习页只显示原答案并提示以课堂讲解为准；本模块不与课程题库、简答题或健康监测进度混算。</div>
+      </div>
+    </div>
+  `;
+}
+
+function hfqSessionStats() {
+  if (!hfQuizSession) {
+    return {
+      answered: 0,
+      correct: 0,
+      wrong: 0,
+      accuracy: 0,
+      scoreEarned: 0,
+      scoreTotal: 0,
+      scorePercent: 0
+    };
+  }
+  const answers = Object.values(hfQuizSession.answers);
+  const correct = answers.filter((answer) => answer.correct).length;
+  const scoreTotal = hfQuizSession.ids.reduce((sum, id) => {
+    const question = HFQ_QUESTION_BY_ID.get(id);
+    return sum + (question ? question.score : 0);
+  }, 0);
+  const scoreEarned = answers.reduce((sum, answer) => sum + (answer.correct ? answer.score : 0), 0);
+  return {
+    answered: answers.length,
+    correct,
+    wrong: answers.length - correct,
+    accuracy: answers.length ? Math.round((correct / answers.length) * 100) : 0,
+    scoreEarned,
+    scoreTotal,
+    scorePercent: scoreTotal ? Math.round((scoreEarned / scoreTotal) * 100) : 0
+  };
+}
+
+function hfqRenderPractice() {
+  if (!hfQuizSession || !hfQuizSession.ids.length) {
+    hfNavigate("quizzes");
+    return;
+  }
+  const question = HFQ_QUESTION_BY_ID.get(hfQuizSession.ids[hfQuizSession.index]);
+  if (!question) {
+    hfNavigate("quizzes");
+    return;
+  }
+
+  const answer = hfQuizSession.answers[question.id];
+  const draft = hfQuizSession.drafts[question.id] || [];
+  const stats = hfqSessionStats();
+  const isLast = hfQuizSession.index === hfQuizSession.ids.length - 1;
+  const progress = Math.round(((hfQuizSession.index + 1) / hfQuizSession.ids.length) * 100);
+  const typeClass = question.type === "multiple" ? "multiple" : question.type === "judge" ? "judge" : "";
+  const quiz = HFQ_QUIZ_BY_ID.get(question.quizId);
+
+  const optionsMarkup = question.options.map((option) => {
+    const isAnswered = Boolean(answer);
+    const isCorrectOption = question.answer.includes(option.key);
+    const isSelected = isAnswered ? answer.selected.includes(option.key) : draft.includes(option.key);
+    let stateClass = "";
+    let resultIcon = "";
+    if (isAnswered) {
+      if (isCorrectOption) {
+        stateClass = " is-correct";
+        resultIcon = hfIcon("check");
+      } else if (isSelected) {
+        stateClass = " is-wrong";
+        resultIcon = hfIcon("x");
+      }
+    } else if (isSelected) {
+      stateClass = " is-selected";
+      resultIcon = hfIcon("check");
+    }
+    return `
+      <button class="option${stateClass}" type="button" data-action="choose-quiz-option" data-key="${option.key}" ${isAnswered ? "disabled" : ""}>
+        <span class="option-key">${option.key}</span>
+        <span class="option-text">${hfEscape(option.text)}</span>
+        <span class="option-mark">${resultIcon}</span>
+      </button>
+    `;
+  }).join("");
+
+  const feedbackMarkup = answer ? `
+    <section class="feedback${answer.correct ? "" : " is-wrong"}" tabindex="-1" aria-live="polite">
+      <div class="feedback-head">
+        <span class="feedback-icon">${answer.correct ? hfIcon("check") : hfIcon("x")}</span>
+        <span class="feedback-title">
+          <strong>${answer.correct ? "回答正确" : "再想一步"}</strong>
+          <span>${answer.correct ? `本题得 ${question.score} 分，继续下一题。` : "正确答案已在选项中标出。"}</span>
+        </span>
+      </div>
+      <div class="answer-line">
+        <span>正确答案</span>
+        ${question.answer.map((key) => `<span class="answer-key">${key}</span>`).join("")}
+        <span>· ${question.answer.map((key) => {
+          const option = question.options.find((item) => item.key === key);
+          return option ? hfEscape(option.text) : key;
+        }).join("；")}</span>
+      </div>
+      <p class="explanation-text">${question.explanation
+        ? hfEscape(question.explanation)
+        : "原表未提供官方答案解析，请以课堂讲解和老师口径为准。"}</p>
+      <p class="auto-advance-note">${isLast ? "1 秒后进入本轮测验结果" : "1 秒后自动进入下一题"}</p>
+      <div class="feedback-foot">
+        <span class="feedback-source">来源：${hfEscape(question.source)} · 第 ${question.number} 题</span>
+        <span class="feedback-tags"><span>原始分值 ${question.score} 分</span><span>${HF_TYPE_LABEL[question.type]}</span></span>
+      </div>
+    </section>
+  ` : "";
+
+  const mapMarkup = hfQuizSession.ids.map((id, index) => {
+    const itemAnswer = hfQuizSession.answers[id];
+    const classes = [
+      "map-button",
+      itemAnswer ? (itemAnswer.correct ? "is-correct" : "is-wrong") : "",
+      index === hfQuizSession.index ? "is-current" : ""
+    ].filter(Boolean).join(" ");
+    return `<button class="${classes}" type="button" data-action="jump-quiz-question" data-index="${index}" aria-label="第 ${index + 1} 题">${index + 1}</button>`;
+  }).join("");
+
+  hfApp.innerHTML = `
+    <div class="practice-view view-enter">
+      <div class="practice-head">
+        <div class="practice-title-row">
+          <button class="back-button" type="button" data-action="exit-quiz" aria-label="返回老师测验">${hfIcon("left")}</button>
+          <div><h1>${hfEscape(hfQuizSession.title)}</h1><p>共 ${hfQuizSession.ids.length} 题 · 原始分值计分 · 独立进度自动保存</p></div>
+        </div>
+        <span class="mode-badge">${hfEscape(hfQuizSession.mode)}</span>
+      </div>
+      <div class="practice-layout">
+        <section class="quiz-card">
+          <div class="quiz-topline">
+            <div class="quiz-meta">
+              <span class="type-tag ${typeClass}">${HF_TYPE_LABEL[question.type]}</span>
+              <span class="category-tag" style="--cat-color:#a9792e;--cat-soft:#fff2dc">${hfEscape(quiz ? quiz.title : "老师测验")}</span>
+              <span class="difficulty-tag">原始 ${question.score} 分</span>
+            </div>
+            <span class="quiz-index"><strong>${String(hfQuizSession.index + 1).padStart(2, "0")}</strong> / ${String(hfQuizSession.ids.length).padStart(2, "0")}</span>
+          </div>
+          <div class="quiz-progress"><span style="width:${progress}%"></span></div>
+          <div class="question-heading">
+            <span class="question-number">${hfQuizSession.index + 1}</span>
+            <h2>${hfEscape(question.question)}</h2>
+          </div>
+          <p class="option-hint">${question.type === "multiple" ? "多选题：选择全部正确项后提交，提交后 1 秒自动进入下一题。" : "点击一个选项后立即查看答案，1 秒后自动进入下一题。"}</p>
+          <div class="option-list">${optionsMarkup}</div>
+          ${question.type === "multiple" && !answer ? `
+            <div class="multi-actions">
+              <p>${draft.length ? `已选择 ${draft.length} 项` : "尚未选择选项"}</p>
+              <button class="button button-dark button-small" type="button" data-action="submit-quiz-multi" ${draft.length ? "" : "disabled"}>提交答案 ${hfIcon("check")}</button>
+            </div>
+          ` : ""}
+          ${feedbackMarkup}
+          <div class="quiz-footer">
+            <div class="quiz-footer-left"><span class="keyboard-hint">${question.type === "multiple" ? "可选择多项后提交" : "点击选项即判题 · 1 秒后自动下一题"}</span></div>
+            <div class="quiz-footer-right">
+              <button class="button button-outline button-small" type="button" data-action="previous-quiz-question" ${hfQuizSession.index === 0 ? "disabled" : ""}>${hfIcon("left")} 上一题</button>
+              <button class="button button-dark button-small" type="button" data-action="next-quiz-question">${isLast ? "完成测验" : "下一题"} ${hfIcon("right")}</button>
+            </div>
+          </div>
+        </section>
+        <aside class="practice-aside">
+          <section class="session-card">
+            <div class="session-card-head"><h3>本轮测验</h3><span>${stats.answered} / ${hfQuizSession.ids.length}</span></div>
+            <div class="session-stats">
+              <div class="session-stat"><strong>${stats.answered}</strong><span>已答</span></div>
+              <div class="session-stat"><strong>${stats.correct}</strong><span>正确</span></div>
+              <div class="session-stat"><strong>${stats.scoreEarned}<small>/${stats.scoreTotal}</small></strong><span>原始得分</span></div>
+            </div>
+            <div class="map-label"><strong>题目导航</strong><span>点击跳转</span></div>
+            <div class="question-map hfq-question-map">${mapMarkup}</div>
+            <div class="map-legend">
+              <span class="legend-item"><span class="legend-dot"></span>未答</span>
+              <span class="legend-item"><span class="legend-dot correct"></span>正确</span>
+              <span class="legend-item"><span class="legend-dot wrong"></span>错误</span>
+            </div>
+          </section>
+          <button class="session-exit" type="button" data-action="exit-quiz">${hfIcon("left")} 退出并返回老师测验</button>
+          <section class="legend-card"><p><strong>独立测验模块</strong><br>这里的题目、进度和错题只保存在老师测验，不计入课程题库与健康监测进度。</p></section>
+        </aside>
+      </div>
+    </div>
+  `;
+}
+
+function hfqChooseOption(key) {
+  if (!hfQuizSession) return;
+  const question = HFQ_QUESTION_BY_ID.get(hfQuizSession.ids[hfQuizSession.index]);
+  if (!question || hfQuizSession.answers[question.id]) return;
+  if (question.type === "multiple") {
+    const draft = hfQuizSession.drafts[question.id] || [];
+    hfQuizSession.drafts[question.id] = draft.includes(key)
+      ? draft.filter((item) => item !== key)
+      : [...draft, key];
+    hfqRenderPractice();
+    return;
+  }
+  hfqSubmitAnswer([key]);
+}
+
+function hfQuizClearAutoAdvance() {
+  if (hfQuizAutoAdvanceTimer !== null) {
+    clearTimeout(hfQuizAutoAdvanceTimer);
+    hfQuizAutoAdvanceTimer = null;
+  }
+}
+
+function hfqScheduleAutoAdvance(questionId, questionIndex) {
+  hfQuizClearAutoAdvance();
+  hfQuizAutoAdvanceTimer = setTimeout(() => {
+    hfQuizAutoAdvanceTimer = null;
+    if (!hfQuizSession || hfQuizSession.index !== questionIndex) return;
+    if (hfQuizSession.ids[hfQuizSession.index] !== questionId) return;
+    hfqMoveQuestion(1);
+  }, 1000);
+}
+
+function hfqSubmitCurrentMultiple() {
+  if (!hfQuizSession) return;
+  const question = HFQ_QUESTION_BY_ID.get(hfQuizSession.ids[hfQuizSession.index]);
+  if (!question || question.type !== "multiple") return;
+  const draft = hfQuizSession.drafts[question.id] || [];
+  if (!draft.length) {
+    hfToast("请先选择至少一个选项");
+    return;
+  }
+  hfqSubmitAnswer(draft);
+}
+
+function hfqSubmitAnswer(selected) {
+  if (!hfQuizSession) return;
+  const question = HFQ_QUESTION_BY_ID.get(hfQuizSession.ids[hfQuizSession.index]);
+  if (!question || hfQuizSession.answers[question.id]) return;
+  const normalized = [...new Set(selected)].sort();
+  const expected = [...question.answer].sort();
+  const correct = normalized.length === expected.length
+    && normalized.every((key, index) => key === expected[index]);
+  hfQuizSession.answers[question.id] = {
+    selected: normalized,
+    correct,
+    score: correct ? question.score : 0
+  };
+  hfqRecordAnswer(question, normalized, correct);
+  hfqRenderPractice();
+  hfqScheduleAutoAdvance(question.id, hfQuizSession.index);
+  requestAnimationFrame(() => {
+    const feedback = hfApp.querySelector(".feedback");
+    if (!feedback) return;
+    feedback.focus({ preventScroll: true });
+    feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+}
+
+function hfqMoveQuestion(direction) {
+  if (!hfQuizSession) return;
+  hfQuizClearAutoAdvance();
+  if (direction > 0 && hfQuizSession.index === hfQuizSession.ids.length - 1) {
+    hfNavigate("quiz-result");
+    return;
+  }
+  hfQuizSession.index = Math.max(
+    0,
+    Math.min(hfQuizSession.ids.length - 1, hfQuizSession.index + direction)
+  );
+  hfqRenderPractice();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function hfqJumpQuestion(index) {
+  if (!hfQuizSession) return;
+  hfQuizClearAutoAdvance();
+  const nextIndex = Number(index);
+  if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= hfQuizSession.ids.length) return;
+  hfQuizSession.index = nextIndex;
+  hfqRenderPractice();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function hfqStartQuiz(ids, title, mode) {
+  hfQuizClearAutoAdvance();
+  const uniqueIds = [...new Set(ids)].filter((id) => HFQ_QUESTION_BY_ID.has(id));
+  if (!uniqueIds.length) {
+    hfToast("老师测验中还没有可练习的题目");
+    return;
+  }
+  hfQuizSession = {
+    ids: uniqueIds,
+    index: 0,
+    answers: {},
+    drafts: {},
+    title,
+    mode,
+    startedAt: Date.now()
+  };
+  if (hfRoute() === "quiz-practice") hfqRenderPractice();
+  else hfNavigate("quiz-practice");
+}
+
+function hfqStartQuizPaper(quizId, mode = "顺序练习") {
+  const quiz = HFQ_QUIZ_BY_ID.get(quizId);
+  if (!quiz) {
+    hfToast("没有找到这份测验");
+    return;
+  }
+  hfqStartQuiz(
+    quiz.questions.map((question) => question.id),
+    `${quiz.title} · ${mode}`,
+    mode
+  );
+}
+
+function hfqRenderResult() {
+  if (!hfQuizSession) {
+    hfNavigate("quizzes");
+    return;
+  }
+  const stats = hfqSessionStats();
+  const total = hfQuizSession.ids.length;
+  const resultTitle = stats.answered === 0
+    ? "这一轮还没有作答。"
+    : stats.scorePercent >= 90
+      ? "这份测验，答得很稳。"
+      : stats.scorePercent >= 70
+        ? "基本稳住了，再复盘错题。"
+        : "错题值得再走一遍。";
+  const wrongIds = Object.entries(hfQuizSession.answers)
+    .filter(([, answer]) => !answer.correct)
+    .map(([id]) => id);
+  hfApp.innerHTML = `
+    <div class="result-view view-enter">
+      <section class="result-card">
+        <div class="result-mark">${hfIcon(stats.scorePercent >= 70 ? "check" : "chart")}</div>
+        <p class="result-eyebrow">TEACHER'S TEST · SESSION COMPLETE</p>
+        <h1>${resultTitle}</h1>
+        <p class="result-subtitle">得分按原始分值计算；本次测验的错题只归档在“老师测验”模块。</p>
+        <div class="result-score"><strong>${stats.scorePercent}<small>%</small></strong><span>本轮得分率 · ${stats.scoreEarned} / ${stats.scoreTotal}</span></div>
+        <div class="result-grid">
+          <div class="result-stat"><span>已作答</span><strong>${stats.answered}<small> / ${total}</small></strong></div>
+          <div class="result-stat"><span>答对</span><strong>${stats.correct}</strong></div>
+          <div class="result-stat"><span>答错</span><strong>${stats.wrong}</strong></div>
+        </div>
+        <div class="result-actions">
+          <button class="button button-dark" type="button" data-action="restart-quiz-session">${hfIcon("play")} 再练一轮</button>
+          ${wrongIds.length ? `<button class="button button-outline" type="button" data-action="retry-quiz-session-wrong">${hfIcon("alert")} 重练本轮错题</button>` : ""}
+          <button class="button button-outline" type="button" data-action="go-quizzes">${hfIcon("layers")} 返回老师测验</button>
+        </div>
+      </section>
     </div>
   `;
 }
@@ -1046,6 +1685,44 @@ hfApp.addEventListener("click", (event) => {
   } else if (action === "start-chapter") {
     const chapter = target.dataset.chapter;
     hfStartPractice(hfChapterQuestions(chapter).map((question) => question.id), `${chapter} · 专项练习`, "章节练习");
+  } else if (action === "go-quizzes") {
+    hfNavigate("quizzes");
+  } else if (action === "start-quiz-paper") {
+    hfqStartQuizPaper(id);
+  } else if (action === "start-quiz-paper-wrong") {
+    const quiz = HFQ_QUIZ_BY_ID.get(id);
+    const wrongIds = hfqWrongForQuiz(id).map((question) => question.id);
+    if (!quiz || !wrongIds.length) {
+      hfToast("本卷暂时没有错题");
+      return;
+    }
+    hfqStartQuiz(wrongIds, `${quiz.title} · 错题重练`, "错题重练");
+  } else if (action === "start-all-quizzes") {
+    hfqStartQuiz(
+      HFQ_QUESTIONS.map((question) => question.id),
+      `老师测验 · 全部 ${HFQ_QUESTIONS.length} 题`,
+      "全部测验"
+    );
+  } else if (action === "start-quiz-random") {
+    hfqStartQuiz(
+      hfShuffle(HFQ_QUESTIONS.map((question) => question.id)).slice(0, 20),
+      "老师测验 · 随机 20 题",
+      "随机练习"
+    );
+  } else if (action === "start-quiz-wrong") {
+    hfqStartQuiz([...hfqState.wrong], "老师测验 · 错题重练", "错题重练");
+  } else if (action === "choose-quiz-option") {
+    hfqChooseOption(target.dataset.key);
+  } else if (action === "submit-quiz-multi") {
+    hfqSubmitCurrentMultiple();
+  } else if (action === "previous-quiz-question") {
+    hfqMoveQuestion(-1);
+  } else if (action === "next-quiz-question") {
+    hfqMoveQuestion(1);
+  } else if (action === "jump-quiz-question") {
+    hfqJumpQuestion(target.dataset.index);
+  } else if (action === "exit-quiz") {
+    hfNavigate("quizzes");
   } else if (action === "start-short") {
     hfStartShort();
   } else if (action === "choose-option") {
@@ -1104,6 +1781,22 @@ hfApp.addEventListener("click", (event) => {
       ? Object.entries(hfSession.answers).filter(([, answer]) => !answer.correct).map(([questionId]) => questionId)
       : [];
     hfStartPractice(wrongIds, "本轮错题重练", "错题模式");
+  } else if (action === "restart-quiz-session") {
+    const ids = hfQuizSession
+      ? [...hfQuizSession.ids]
+      : HFQ_QUESTIONS.map((question) => question.id);
+    hfqStartQuiz(
+      ids,
+      hfQuizSession?.title || "老师测验 · 再练一轮",
+      "重新练习"
+    );
+  } else if (action === "retry-quiz-session-wrong") {
+    const wrongIds = hfQuizSession
+      ? Object.entries(hfQuizSession.answers)
+        .filter(([, answer]) => !answer.correct)
+        .map(([questionId]) => questionId)
+      : [];
+    hfqStartQuiz(wrongIds, "老师测验 · 本轮错题重练", "错题重练");
   } else if (action === "go-home") {
     hfNavigate("home");
   }
@@ -1140,6 +1833,31 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape") {
     hfCloseSidebar();
+    return;
+  }
+  if (!isTyping && hfRoute() === "quiz-practice" && hfQuizSession) {
+    const quizQuestion = HFQ_QUESTION_BY_ID.get(hfQuizSession.ids[hfQuizSession.index]);
+    if (!quizQuestion) return;
+    const quizAnswered = Boolean(hfQuizSession.answers[quizQuestion.id]);
+    const quizNumber = Number(event.key);
+    if (Number.isInteger(quizNumber) && quizNumber >= 1 && quizNumber <= quizQuestion.options.length) {
+      event.preventDefault();
+      hfqChooseOption(quizQuestion.options[quizNumber - 1].key);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (quizQuestion.type === "multiple" && !quizAnswered) hfqSubmitCurrentMultiple();
+      else hfqMoveQuestion(1);
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      hfqMoveQuestion(1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      hfqMoveQuestion(-1);
+    }
     return;
   }
   if (isTyping || hfRoute() !== "practice" || !hfSession) return;

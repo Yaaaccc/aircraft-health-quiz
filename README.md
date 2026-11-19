@@ -4,6 +4,7 @@
 
 - 飞机健康监测与故障诊断：56 道客观题 + 11 道简答题
 - 人为因素与航空法规：70 道客观题 + 12 道简答题
+- 人为因素「老师测验」独立模块：3 份课堂测验，共 71 道题
 
 纯静态页面，不需要后端，可直接部署到 GitHub Pages。
 
@@ -13,6 +14,7 @@
 
 - 学习站首页：https://yaaaccc.github.io/aircraft-health-quiz/
 - 人为因素与航空法规：https://yaaaccc.github.io/aircraft-health-quiz/human-factors.html
+- 人为因素老师测验：https://yaaaccc.github.io/aircraft-health-quiz/human-factors.html#/quizzes
 - GitHub 仓库：https://github.com/Yaaaccc/aircraft-health-quiz
 
 ## PDF 题库
@@ -35,7 +37,9 @@ output/pdf/人为因素与航空法规_题库.pdf
 - 选择后自动显示正确答案、解析、来源与知识点标签
 - 11 道健康监测简答题：草稿保存、先作答后展开答案、“掌握 / 模糊 / 不会”自评
 - 12 道人为因素简答题：独立草稿与自评，不与健康监测混算
+- 三份老师测验：独立进度、错题和分值统计，不混入人为因素课程题库
 - 顺序练习、随机 20 题、章节 / 模块练习、错题重练
+- 单选 / 判断点击后立即判题，多选提交后判题，均 1 秒自动跳转
 - 错题自动归档，重练答对后自动移出
 - 题目搜索、题型筛选、模块筛选
 - 两门课程分别使用独立 `localStorage` 键保存进度
@@ -71,6 +75,7 @@ aircraft-health-quiz/
 ├── human-factors.html          # 人为因素与航空法规入口
 ├── human-factors.js            # 人为因素刷题与简答逻辑
 ├── human-factors-questions.js  # 人为因素客观题与简答题
+├── human-factors-quizzes.js    # 三份老师测验及独立题库数据
 ├── human-factors.css           # 第二门课程的局部样式
 ├── styles.css                  # 共用界面与响应式样式
 ├── assets/                     # 简答题图片
@@ -144,10 +149,13 @@ https://你的用户名.github.io/你的仓库名/
 
 新增题目时保持 `id` 唯一，并确保 `answer` 中的选项键存在于 `options` 中。
 
+老师测验题目在 `human-factors-quizzes.js`，页面路由为 `#/quizzes`。该模块使用独立的 `localStorage` 键 `aeroprep-hf-teacher-quizzes-state-v1`，不会改变课程主题库的完成度。
+
 ## 资料说明
 
 - 健康监测题库依据课程大纲、六次作业及作业作答整理。
 - 压力传感器选型题采用作业官方答案。
 - 故障树作图/计算题依据作业手写作答与 95 分记录整理，非官方标准答案。
 - 人为因素题库依据《人为因素和航空法规-学习笔记3.0.pdf》整理。
+- 老师测验题目与答案原样来自任课教师发布的第一次、第二次、第三次测验 Excel；原表未提供官方解析。
 - 法规部分若与现行 CCAR 或任课教师最新口径不一致，以最新规章和课堂要求为准。
